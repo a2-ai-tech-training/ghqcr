@@ -1,0 +1,15 @@
+use_lockfile = false
+
+[project]
+name = "ghqcr"
+r_version = "4.4"
+
+repositories = [
+    { alias = "PPM", url = "https://packagemanager.posit.co/cran/latest" },
+    { alias = "PRISM", url = "https://prism.a2-ai.cloud/rpkgs/nimbus/2025.08" }
+]
+dependencies = [
+    "devtools",
+    "rextendr",
+    { name = "ghqcr", path = ".", install_suggestions = true, dependencies_only = true },
+]
