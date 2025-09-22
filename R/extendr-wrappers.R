@@ -10,9 +10,9 @@
 #' @useDynLib ghqcr, .registration = TRUE
 NULL
 
-#' Return string `"Hello world!"` to R.
-#' @export
-hello_world <- function() .Call(wrap__hello_world)
+setup_configuration_extr <- function(config_dir, git) .Call(wrap__setup_configuration_extr, config_dir, git)
+
+configuration_status_extr <- function(config_dir) .Call(wrap__configuration_status_extr, config_dir)
 
 
 # nolint end
