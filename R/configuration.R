@@ -20,6 +20,5 @@ ghqc_config_setup <- function(config_url = NULL, config_path = NULL) {
 
 ghqc_config_status <- function(config_path = NULL) {
   val <- .catch(configuration_status_extr(config_path))
-
-  cli::cli_alert_success(val)
+  message(val)
 }
