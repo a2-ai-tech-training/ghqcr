@@ -7,7 +7,7 @@
       }
       cnd
     },
-    "extendr_error"
+    "extendr_err"
   )
   cnd
 }

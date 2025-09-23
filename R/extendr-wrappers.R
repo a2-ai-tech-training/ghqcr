@@ -14,5 +14,15 @@ setup_configuration_extr <- function(config_dir, git) .Call(wrap__setup_configur
 
 configuration_status_extr <- function(config_dir) .Call(wrap__configuration_status_extr, config_dir)
 
+get_checklists_extr <- function(config_dir) .Call(wrap__get_checklists_extr, config_dir)
+
+get_milestones_extr <- function(working_dir) .Call(wrap__get_milestones_extr, working_dir)
+
+get_repo_users_extr <- function(working_dir) .Call(wrap__get_repo_users_extr, working_dir)
+
+init_logger_extr <- function() invisible(.Call(wrap__init_logger_extr))
+
+log_message_extr <- function(level, msg) invisible(.Call(wrap__log_message_extr, level, msg))
+
 
 # nolint end
