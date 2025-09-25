@@ -5,6 +5,7 @@ use ghqctoolkit::{
     configuration_status, determine_config_dir, setup_configuration, Configuration, GitCommand,
     GitInfo,
 };
+use serde::Deserialize;
 
 use crate::{get_rt, ENV_PROVIDER};
 
@@ -46,22 +47,26 @@ pub fn configuration_status_impl(config_dir: impl AsRef<Path>) -> Result<String>
     Ok(configuration_status(&configuration, &git_info))
 }
 
-#[derive(Clone, PartialEq, Debug, IntoDataFrameRow)]
-pub struct RChecklist {
-    name: String,
-    content: String,
-}
-
-pub fn get_checklists_impl(config_dir: impl AsRef<Path>) -> Result<Robj> {
+pub fn get_configuration_impl(config_dir: impl AsRef<Path>) -> ExternalPtr<Configuration> {
     let mut configuration = Configuration::from_path(config_dir);
     configuration.load_checklists();
 
+    ExternalPtr::new(configuration)
+}
+
+#[derive(Clone, PartialEq, Debug, IntoDataFrameRow, Deserialize)]
+pub struct RChecklist {
+    pub name: String,
+    pub content: String,
+}
+
+pub fn get_checklists_impl(configuration: &ExternalPtr<Configuration>) -> Result<Robj> {
     let checklists = configuration
         .checklists
-        .into_values()
+        .values()
         .map(|c| RChecklist {
-            name: c.name,
-            content: c.content,
+            name: c.name.to_string(),
+            content: c.content.to_string(),
         })
         .collect::<Vec<_>>();
 
@@ -76,4 +81,16 @@ pub fn get_checklists_impl(config_dir: impl AsRef<Path>) -> Result<Robj> {
         .clone();
 
     Ok(r_obj)
+}
+
+pub fn format_checklist_as_html_impl(checklist_robj: &Robj) -> Result<String> {
+    use extendr_api::deserializer::from_robj;
+
+    let checklist: RChecklist = from_robj(checklist_robj)?;
+    let markdown_content = format!("# {}\n{}", checklist.name, checklist.content);
+
+    // Convert markdown to HTML
+    let html = markdown::to_html(&markdown_content);
+
+    Ok(html)
 }

@@ -24,5 +24,6 @@ Imports:
     purrr,
     tibble,
     shinyjs,
-    jsTreeR (>= 2.5.0)
+    jsTreeR (>= 2.5.0),
+    shinyvalidate
 

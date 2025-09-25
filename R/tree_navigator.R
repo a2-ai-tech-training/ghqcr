@@ -82,7 +82,7 @@ list_files_and_dirs <- function(path, pattern, all.files) {
     included_files <- included_files[!grepl(pattern, included_files)]
   }
 
-  .le$debug(
+  .le$trace(
     as.character(glue::glue(
       "Included files: {paste(included_files, collapse = ', ')}"
     ))
@@ -101,7 +101,7 @@ list_files_and_dirs <- function(path, pattern, all.files) {
     included_files <- included_files[non_empty_dirs]
   }
 
-  .le$debug(as.character(glue::glue(
+  .le$trace(as.character(glue::glue(
     "Filtered included files: {paste(included_files, collapse = ', ')}"
   )))
 
@@ -140,10 +140,10 @@ treeNavigatorUI <- function(id, width = "100%", height = "auto") {
     tags$link(
       rel = "stylesheet",
       type = "text/css",
-      href = "ghqc.app/css/tree.css"
+      href = "ghqcr/css/tree.css"
     ),
-    tags$script(type = "module", src = "ghqc.app/js/highlight_files.js"),
-    tags$script(type = "module", src = "ghqc.app/js/tree.js")
+    tags$script(type = "module", src = "ghqcr/js/highlight_files.js"),
+    tags$script(type = "module", src = "ghqcr/js/tree.js")
   )
 }
 
@@ -231,7 +231,7 @@ treeNavigatorServer <- function(
         pattern = pattern,
         all.files = all.files
       )
-      .le$debug(as.character(glue::glue(
+      .le$trace(as.character(glue::glue(
         "List files and dirs result: {paste(lf$files, collapse = ', ')}"
       )))
 

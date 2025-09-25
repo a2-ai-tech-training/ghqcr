@@ -14,15 +14,31 @@ setup_configuration_extr <- function(config_dir, git) .Call(wrap__setup_configur
 
 configuration_status_extr <- function(config_dir) .Call(wrap__configuration_status_extr, config_dir)
 
-get_checklists_extr <- function(config_dir) .Call(wrap__get_checklists_extr, config_dir)
+get_configuration_extr <- function(config_dir) .Call(wrap__get_configuration_extr, config_dir)
+
+get_checklist_display_name_extr <- function(configuration) .Call(wrap__get_checklist_display_name_extr, configuration)
+
+get_prepended_checklist_note_extr <- function(configuration) .Call(wrap__get_prepended_checklist_note_extr, configuration)
+
+get_checklists_extr <- function(configuration) .Call(wrap__get_checklists_extr, configuration)
 
 get_milestones_extr <- function(working_dir) .Call(wrap__get_milestones_extr, working_dir)
 
+get_milestone_issues_extr <- function(working_dir, milestone) .Call(wrap__get_milestone_issues_extr, working_dir, milestone)
+
 get_repo_users_extr <- function(working_dir) .Call(wrap__get_repo_users_extr, working_dir)
+
+create_issues_extr <- function(milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir) .Call(wrap__create_issues_extr, milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir)
 
 init_logger_extr <- function() invisible(.Call(wrap__init_logger_extr))
 
 log_message_extr <- function(level, msg) invisible(.Call(wrap__log_message_extr, level, msg))
+
+format_checklist_as_html_extr <- function(checklist_robj) .Call(wrap__format_checklist_as_html_extr, checklist_robj)
+
+read_to_string_extr <- function(path) .Call(wrap__read_to_string_extr, path)
+
+markdown_to_html_extr <- function(content) .Call(wrap__markdown_to_html_extr, content)
 
 
 # nolint end
