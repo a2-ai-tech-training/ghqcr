@@ -7,7 +7,7 @@ use ghqctoolkit::{
 };
 use serde::Deserialize;
 
-use crate::{get_rt, ENV_PROVIDER};
+use crate::{utils::get_rt, ENV_PROVIDER};
 
 pub fn determine_config_dir_from_null(config_dir: Nullable<&str>) -> Result<PathBuf> {
     let c = config_dir.into_option().map(PathBuf::from);

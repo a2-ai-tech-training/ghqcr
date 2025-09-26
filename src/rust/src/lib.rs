@@ -1,73 +1,25 @@
 mod configuration;
 mod create;
+mod git_utils;
+mod utils;
 
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::sync::Once;
 
 use extendr_api::{prelude::*, Robj};
-use ghqctoolkit::{
-    utils::StdEnvProvider, Configuration, DiskCache, GitInfo, GitRepository,
-};
-use std::sync::Once;
-use tokio::runtime::{Builder, Runtime};
+use ghqctoolkit::{utils::StdEnvProvider, Configuration};
 
 use crate::{
     configuration::{
         configuration_status_impl, determine_config_dir_from_null, format_checklist_as_html_impl,
         get_checklists_impl, get_configuration_impl, setup_configuration_impl,
     },
-    create::{create_issues_impl, file_git_status_impl, get_milestone_issues_impl, get_milestones_impl, get_users_impl},
+    create::{create_issues_impl, file_git_status_impl},
+    git_utils::{get_milestone_issues_impl, get_milestones_impl, get_users_impl},
+    utils::{get_cached_git_info, get_disk_cache},
 };
 
-static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static DISK_CACHE: OnceLock<Option<DiskCache>> = OnceLock::new();
-static GIT_INFO_CACHE: OnceLock<Mutex<HashMap<String, Arc<GitInfo>>>> = OnceLock::new();
 static ENV_PROVIDER: StdEnvProvider = StdEnvProvider;
 static LOGGER_INIT: Once = Once::new();
-
-// Helper function to get a tokio runtime
-fn get_rt() -> &'static Runtime {
-    TOKIO_RUNTIME.get_or_init(|| {
-        Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime")
-    })
-}
-
-fn get_disk_cache(git_info: &impl GitRepository) -> &'static Option<DiskCache> {
-    DISK_CACHE.get_or_init(|| DiskCache::from_git_info(git_info).ok())
-}
-
-fn get_cached_git_info(working_dir: &str) -> Result<Arc<GitInfo>> {
-    let cache = GIT_INFO_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut cache_guard = cache
-        .lock()
-        .map_err(|_| Error::Other("Failed to acquire GitInfo cache lock".to_string()))?;
-
-    // Canonicalize path for consistent cache keys
-    let key = std::fs::canonicalize(working_dir)
-        .unwrap_or_else(|_| PathBuf::from(working_dir))
-        .to_string_lossy()
-        .to_string();
-
-    if let Some(git_info) = cache_guard.get(&key) {
-        log::debug!("Found cached GitInfo for: {}", working_dir);
-        return Ok(Arc::clone(git_info));
-    }
-
-    log::debug!("Creating new GitInfo for: {}", working_dir);
-    let git_info = GitInfo::from_path(&PathBuf::from(working_dir), &ENV_PROVIDER)
-        .map_err(|e| Error::Other(format!("Failed to create GitInfo: {e}")))?;
-
-    let arc_git_info = Arc::new(git_info);
-    cache_guard.insert(key, Arc::clone(&arc_git_info));
-
-    Ok(arc_git_info)
-}
 
 #[extendr]
 pub fn setup_configuration_extr(config_dir: Nullable<&str>, git: &str) -> Result<String> {
@@ -138,7 +90,8 @@ pub fn get_milestone_issues_extr(working_dir: &str, milestone: Robj) -> Result<V
 #[extendr]
 pub fn get_repo_users_extr(working_dir: &str) -> Result<Robj> {
     let git_info = get_cached_git_info(working_dir)?;
-    Ok(get_users_impl(git_info.as_ref()))
+    let cache = get_disk_cache(git_info.as_ref());
+    Ok(get_users_impl(git_info.as_ref(), cache.as_ref()))
 }
 
 #[extendr]
@@ -217,7 +170,7 @@ pub fn file_git_status_extr(files: Vec<String>, working_dir: &str) -> Result<Rob
 
     match results.into_dataframe() {
         Ok(df) => Ok(df.into()),
-        Err(e) => Err(Error::Other(format!("Failed to create dataframe: {}", e)))
+        Err(e) => Err(Error::Other(format!("Failed to create dataframe: {}", e))),
     }
 }
 
