@@ -1,15 +1,10 @@
-use std::{
-    borrow::Cow,
-    future::{Future, IntoFuture},
-    path::{Path, PathBuf},
-};
+use std::path::Path;
 
 use extendr_api::{deserializer::from_robj, prelude::*, serializer::to_robj, Robj};
 use ghqctoolkit::{
     create_labels_if_needed, get_repo_users, Checklist, DiskCache, GitFileOps, GitHubReader,
-    GitHubWriter, GitRepository, QCIssue, RelevantFile, RepoUser,
+    GitHubWriter, GitRepository, GitStatusOps, QCIssue,
 };
-use gix::hashtable::hash_map::HashMap;
 use octocrab::models::Milestone;
 use serde::Deserialize;
 
@@ -104,7 +99,7 @@ pub fn create_issues_impl(
     let (milestone_id, milestone_url) = if let Some(m) =
         milestones.iter().find(|m| m.title == milestone_name)
     {
-        (m.number as u64, m.url.to_string())
+        (m.number as u64, m.html_url.to_string())
     } else {
         if let Err(e) = rt.block_on(create_labels_if_needed(
             cache,
@@ -115,7 +110,7 @@ pub fn create_issues_impl(
         }
 
         match rt.block_on(git_info.create_milestone(milestone_name, &description.into_option())) {
-            Ok(m) => (m.number as u64, m.url.to_string()),
+            Ok(m) => (m.number as u64, m.html_url.to_string()),
             Err(e) => {
                 return Err(Error::Other(format!(
                     "Failed to create milestone '{milestone_name}': {e}"
@@ -129,63 +124,107 @@ pub fn create_issues_impl(
     let mut successful_qc_issues = Vec::new();
 
     // First pass: Create QC issues and collect errors/successes
-    for file_data in file_data_vec {
+    for (index, file_data) in file_data_vec.into_iter().enumerate() {
         let file_name = file_data.name.clone();
         match create_qc_issue(milestone_id, file_data, &prepended_checklist_note, git_info) {
             Ok(qc_issue) => {
-                successful_qc_issues.push((file_name, qc_issue));
+                successful_qc_issues.push((index, file_name, qc_issue));
             }
-            Err(e) => errors.push(format!(
-                "❌ **{}**: Failed to create QC issue - {}",
-                file_name, e
+            Err(e) => errors.push((
+                index,
+                format!("❌ **{file_name}**: Failed to create QC issue - {e}"),
             )),
         }
     }
 
-    // Second pass: Post all successful QC issues in parallel
+    // Second pass: Post QC issues in batches of 2, retry failures sequentially
+    // Try to go as fast as possible, without too much rate limiting
     if !successful_qc_issues.is_empty() {
-        let post_futures = successful_qc_issues
-            .iter()
-            .map(|(_, issue)| git_info.post_issue(issue));
-        let post_results = rt.block_on(futures::future::join_all(post_futures));
+        let mut retry_queue = Vec::new();
 
-        // Process posting results
-        for ((file_name, _), post_result) in successful_qc_issues.iter().zip(post_results) {
-            match post_result {
-                Ok(url) => successes.push(format!("✅ **{}**: {}", file_name, url)),
-                Err(e) => errors.push(format!(
-                    "❌ **{}**: Failed to post issue - {}",
-                    file_name, e
-                )),
+        // Process in batches of 2
+        for batch in successful_qc_issues.chunks(2) {
+            let batch_futures = batch.iter().map(|(_, _, issue)| git_info.post_issue(issue));
+            let batch_results = rt.block_on(futures::future::join_all(batch_futures));
+
+            // Process batch results
+            for ((index, file_name, issue), result) in batch.iter().zip(batch_results) {
+                match result {
+                    Ok(url) => successes.push((*index, format!("✅ [**{file_name}**]({url})"))),
+                    Err(e) => {
+                        log::debug!(
+                            "Initial post failed for {file_name}: {e}. Adding to retry queue."
+                        );
+                        retry_queue.push((*index, file_name.clone(), issue));
+                    }
+                }
+            }
+
+            // Small delay between batches
+            if successful_qc_issues.len() > 2 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+
+        // Retry failed issues one at a time with longer delays
+        if !retry_queue.is_empty() {
+            log::debug!("Retrying {} failed issues sequentially", retry_queue.len());
+            for (index, file_name, issue) in retry_queue {
+                std::thread::sleep(std::time::Duration::from_millis(500)); // Longer delay for retries
+
+                match rt.block_on(git_info.post_issue(issue)) {
+                    Ok(url) => {
+                        log::debug!("Retry successful for {file_name}");
+                        successes.push((index, format!("✅ [**{file_name}**]({url})")));
+                    }
+                    Err(e) => {
+                        log::warn!("Retry failed for {file_name}: {e}");
+                        errors.push((
+                            index,
+                            format!("❌ **{file_name}**: Failed to post issue - {e}"),
+                        ));
+                    }
+                }
             }
         }
     }
+
+    // Sort results by original file order
+    successes.sort_by_key(|(index, _)| *index);
+    errors.sort_by_key(|(index, _)| *index);
+
+    // Check if we have successes/errors before consuming them
+    let has_successes = !successes.is_empty();
+    let has_errors = !errors.is_empty();
 
     // Create a formatted result string for the modal
     let mut result_parts = vec![format!(
         "#### [Click here to view Milestone on GitHub]({milestone_url})"
     )];
 
-    if !successes.is_empty() {
+    if has_successes {
+        let success_messages: Vec<String> =
+            successes.into_iter().map(|(_, message)| message).collect();
         result_parts.push(format!(
             "## Successfully Created ({}):\n{}",
-            successes.len(),
-            successes.join("\n\n")
+            success_messages.len(),
+            success_messages.join("\n\n")
         ));
     }
 
-    if !errors.is_empty() {
+    if has_errors {
+        let error_messages: Vec<String> = errors.into_iter().map(|(_, message)| message).collect();
         result_parts.push(format!(
             "## Failed ({}):\n{}",
-            errors.len(),
-            errors.join("\n\n")
+            error_messages.len(),
+            error_messages.join("\n\n")
         ));
     }
 
     let result_string = result_parts.join("\n\n\n");
 
     // Only return an error if ALL files failed
-    if successes.is_empty() && !errors.is_empty() {
+    if !has_successes && has_errors {
         return Err(Error::Other(format!(
             "All QC issue creation failed:\n{}",
             result_string
@@ -212,7 +251,6 @@ fn create_qc_issue(
         .into_iter()
         .map(|r| r.login)
         .collect::<Vec<_>>();
-    log::debug!("Assigning {} to issue.", assignees.join(", "));
 
     QCIssue::new(
         &file_data.name,
@@ -223,4 +261,78 @@ fn create_qc_issue(
         checklist,
     )
     .map_err(|e| Error::Other(format!("{e}")))
+}
+
+#[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
+pub struct RFileGitStatus {
+    pub file_path: String,
+    pub is_git_tracked: bool,
+    pub has_commits: bool,
+    pub git_status: Option<String>,
+    pub commit_hash: Option<String>,
+    pub error_message: Option<String>,
+}
+
+pub fn file_git_status_impl(
+    files: Vec<String>,
+    git_info: &(impl GitFileOps + GitRepository + GitStatusOps),
+) -> Result<Vec<RFileGitStatus>> {
+    let mut results = Vec::new();
+
+    // Get git status once for efficiency
+    let git_status = match git_info.status() {
+        Ok(status) => Some(status),
+        Err(e) => {
+            log::warn!("Failed to get git status: {e}");
+            None
+        }
+    };
+
+    // Get current branch for commit detection
+    let current_branch = git_info.branch().ok();
+
+    for file_path in files {
+        let mut result = RFileGitStatus {
+            file_path: file_path.clone(),
+            is_git_tracked: false,
+            has_commits: false,
+            git_status: None,
+            commit_hash: None,
+            error_message: None,
+        };
+
+        // Check if file has commits (indicates it's git tracked)
+        let file_commits = match git_info.file_commits(Path::new(&file_path), &current_branch) {
+            Ok(commits) => {
+                if commits.is_empty() {
+                    log::debug!("No commits for file {file_path}");
+                    result.is_git_tracked = false;
+                    None
+                } else {
+                    result.is_git_tracked = true;
+                    result.has_commits = !commits.is_empty();
+                    if let Some((first_commit, _)) = commits.first() {
+                        result.commit_hash = Some(first_commit.to_string());
+                    }
+                    Some(commits.into_iter().map(|(id, _)| id).collect::<Vec<_>>())
+                }
+            }
+            Err(e) => {
+                // File might not be tracked or other git error
+                log::debug!("Could not get commits for {}: {}", file_path, e);
+                result.is_git_tracked = false;
+                None
+            }
+        };
+
+        // Get git status for the file if available
+        if let Some(ref git_status) = git_status {
+            let formatted_status = git_status.format_for_file(Path::new(&file_path), &file_commits);
+            result.git_status = Some(formatted_status);
+        }
+
+        results.push(result);
+    }
+
+    Ok(results)
 }

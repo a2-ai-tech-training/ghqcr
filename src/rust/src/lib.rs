@@ -2,17 +2,15 @@ mod configuration;
 mod create;
 
 use std::{
-    borrow::Cow,
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex, OnceLock},
 };
 
-use extendr_api::{deserializer::from_robj, prelude::*, Robj};
+use extendr_api::{prelude::*, Robj};
 use ghqctoolkit::{
-    utils::StdEnvProvider, Configuration, DiskCache, GitHubWriter, GitInfo, GitRepository,
+    utils::StdEnvProvider, Configuration, DiskCache, GitInfo, GitRepository,
 };
-use octocrab::models::Milestone;
 use std::sync::Once;
 use tokio::runtime::{Builder, Runtime};
 
@@ -21,7 +19,7 @@ use crate::{
         configuration_status_impl, determine_config_dir_from_null, format_checklist_as_html_impl,
         get_checklists_impl, get_configuration_impl, setup_configuration_impl,
     },
-    create::{create_issues_impl, get_milestone_issues_impl, get_milestones_impl, get_users_impl},
+    create::{create_issues_impl, file_git_status_impl, get_milestone_issues_impl, get_milestones_impl, get_users_impl},
 };
 
 static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -212,6 +210,17 @@ pub fn read_to_string_extr(path: &str) -> Nullable<String> {
     }
 }
 
+#[extendr]
+pub fn file_git_status_extr(files: Vec<String>, working_dir: &str) -> Result<Robj> {
+    let git_info = get_cached_git_info(working_dir)?;
+    let results = file_git_status_impl(files, git_info.as_ref())?;
+
+    match results.into_dataframe() {
+        Ok(df) => Ok(df.into()),
+        Err(e) => Err(Error::Other(format!("Failed to create dataframe: {}", e)))
+    }
+}
+
 // Macro to generate exports.
 // This ensures exported functions are registered with R.
 // See corresponding C code in `entrypoint.c`.
@@ -227,6 +236,7 @@ extendr_module! {
     fn get_milestone_issues_extr;
     fn get_repo_users_extr;
     fn create_issues_extr;
+    fn file_git_status_extr;
     fn init_logger_extr;
     fn log_message_extr;
     fn format_checklist_as_html_extr;

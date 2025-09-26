@@ -30,6 +30,8 @@ get_repo_users_extr <- function(working_dir) .Call(wrap__get_repo_users_extr, wo
 
 create_issues_extr <- function(milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir) .Call(wrap__create_issues_extr, milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir)
 
+file_git_status_extr <- function(files, working_dir) .Call(wrap__file_git_status_extr, files, working_dir)
+
 init_logger_extr <- function() invisible(.Call(wrap__init_logger_extr))
 
 log_message_extr <- function(level, msg) invisible(.Call(wrap__log_message_extr, level, msg))

@@ -145,7 +145,7 @@ div[id$="-main_container"] {
 .grid-items {
   display: grid;
   column-gap: 10px;
-  grid-template-columns: auto minmax(100px, 1fr) minmax(125px, 1fr) auto;
+  grid-template-columns: minmax(100px, max-content) minmax(125px, 1fr) auto;
   width: 100%;
   transition: 0.5s;
 }
