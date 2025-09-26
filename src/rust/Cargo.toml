@@ -10,11 +10,17 @@ crate-type = [ 'staticlib' ]
 name = 'ghqcr'
 
 [dependencies]
-extendr-api = { version = "0.8.1", features = ["result_condition"] }
+extendr-api = { version = "0.8.1", features = ["result_condition", "serde"] }
 ghqctoolkit = { path = "/Users/wescummings/projects/ghqctoolkit" }
 gix = { version = "0.73", default-features = false }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 anyhow = "1.0"
+octocrab = { version = "0.39", default-features = false }
+env_logger = "0.10"
+log = "0.4"
+markdown = "1.0"
+serde = "1.0"
+futures = "0.3"
 
 [profile.release]
 lto = true

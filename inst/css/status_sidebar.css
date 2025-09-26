@@ -1,0 +1,29 @@
+div[id$='-sidebar'] {
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
+  flex: 0 0 0;
+  overflow-y: auto;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-collapsed div[id$='-sidebar'] {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  flex: 0 0 0 !important;
+}
+
+.sidebar-collapsed div[id$='-sidebar'] * {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+div[id$='-sidebar'] * {
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}

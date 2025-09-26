@@ -13,3 +13,17 @@ Config/rextendr/version: 0.4.2
 SystemRequirements: Cargo (Rust's package manager), rustc >= 1.70, xz, git
 Depends: 
     R (>= 4.2)
+Imports:
+    cli,
+    rlang,
+    shiny (>= 1.8.0),
+    glue (>= 1.6.2),
+    here,
+    miniUI,
+    waiter,
+    purrr,
+    tibble,
+    shinyjs,
+    jsTreeR (>= 2.5.0),
+    shinyvalidate
+

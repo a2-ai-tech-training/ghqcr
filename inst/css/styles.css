@@ -1,0 +1,294 @@
+body {
+  font-size: small !important;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+  line-height: 1.42857143 !important;
+  margin: 0 !important;
+  max-width: none !important;
+  min-width: none !important;
+  padding: 0 !important; /* modal ui changes workaround: https://stackoverflow.com/questions/63938194/r-shiny-app-width-shrinks-after-i-close-the-modal */
+}
+
+
+h1 {
+  font-weight: bold; /* modal ui changes to bold; default set to bold */
+}
+
+div[id$="-sidebar"] {
+  width: 35%;
+  min-width: 250px;
+  float: left;
+  transition: width 0.3s;
+  position: relative;
+  padding-bottom: 10px;
+  overflow: auto;
+}
+
+div[id$="-sidebar"].collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+div[id$="-treeNavigator"] {
+  overflow: inherit;
+}
+
+div[id$="-main_panel"] {
+  transition: margin-left 0.3s;
+}
+
+div[id$="-divider"] {
+  width: 1.5px;
+  margin-left: 10px;
+  background-color: lightgrey;
+  float: left;
+  position: relative;
+}
+
+button[id$="-toggle_sidebar"] {
+  position: relative;
+  top: 50%;
+  margin-right: -11.5px;
+  transform: translateY(-50%);
+  background-color: lightgrey;
+  color: black;
+  border: none;
+  padding: 4px;
+  height: 50px;
+  cursor: pointer;
+  transition: right 0.3s;
+  font-size: 8px;
+  z-index: 1;
+  border-radius: 0;
+  border-top-right-radius: 5px;
+  border-bottom-right-radius: 5px;
+}
+
+div[id$="-sidebar"].collapsed + div[id$="-divider"] {
+  margin-left: -11.5px;
+}
+
+
+div[id$="-content"] {
+  display: flex;
+  flex: 1;
+  padding: 10px;
+  overflow-y: hidden;
+}
+
+div[id$="-center_content"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+
+div[id$="-main_container"] {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width:100%;
+  min-width: 400px;
+  overflow: auto;
+}
+
+
+.logo-img {
+  margin-right: -30px !important;
+  background-color: transparent; /* modal ui changes workaround: https://stackoverflow.com/questions/63938194/r-shiny-app-width-shrinks-after-i-close-the-modal */
+  position: relative;
+  left: -18px;
+  top: -2px;
+}
+
+
+
+.selectize-input {
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+/*https://github.com/selectize/selectize.js/issues/377#issuecomment-189724525 different ways to hide overflow */
+.selectize-input .item {
+  max-width: 90%;
+}
+
+.selectize-dropdown {
+ word-wrap : break-word;
+ position: absolute !important;
+  z-index: 1000 !important;
+}
+
+.selectize-dropdown [data-selectable] {
+  padding-left: 5px;
+}
+
+.inline-selectize {
+  display: flex;
+  gap: 10px;
+}
+
+.shiny-panel-conditional{
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+}
+
+
+.grid-container-depth-0 {
+  /*display: grid;*/
+  align-items: center;
+  padding-left: 15px;
+}
+
+.grid-items {
+  display: grid;
+  column-gap: 10px;
+  grid-template-columns: minmax(100px, max-content) minmax(125px, 1fr) auto;
+  width: 100%;
+  transition: 0.5s;
+}
+
+.flex-container {
+    display: flex;
+    align-items: center;
+}
+
+.header-padding {
+    padding-right: 5px;
+}
+
+.preview-button {
+    height: 17px !important;
+    font-size: 50% !important;
+    padding: 1px 2px 0px 2px !important;
+    color: #5f5f5f !important;
+}
+
+.treejs-label {
+    word-break: break-all;
+    word-wrap: break-word;
+}
+
+.disabled-btn {
+  background-color: lightgrey !important;
+  color: white !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+.enabled-btn {
+  color: black !important;
+  cursor: pointer !important;
+}
+
+/* Status app */
+
+.checkbox label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-weight: 600;
+    font-size: 13px;
+    color: #333;
+}
+
+
+
+table.dataTable td, table.dataTable th {
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.dataTables_wrapper .dataTables_scrollBody {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 20px !important;
+  overflow: visible !important;
+}
+
+
+.dataTables_wrapper .dataTables_info {
+  text-align: left !important;
+  float: left !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+  padding: 3px !important;
+  margin: 0 !important;
+}
+
+::placeholder {
+  color: #8e8e8e; /* match colors of placeholders */
+}
+
+.dropdown-menu.custom-dropdown {
+  padding: 4px;
+  width: auto;
+  min-width: unset;
+  word-wrap: break-word;
+}
+.dropdown-menu.custom-dropdown .dropdown-btn {
+  display: block;
+  padding: 6px 12px;
+  margin-bottom: 4px;
+  border: none !important;
+  text-align: left;
+  color: white !important;
+}
+.btn-plum {
+ background-color: #8e7cc3 !important;
+  color: white !important;
+  border: none !important;
+}
+.dropdown-menu.custom-dropdown .btn-success {
+  background-color: #5cb85c !important;
+}
+.dropdown-menu.custom-dropdown .btn-info {
+  background-color: #5bc0de !important;
+}
+.dropdown-menu.custom-dropdown .btn-danger {
+  background-color: #d9534f !important;
+}
+.dropdown-menu.custom-dropdown .btn-plum {
+  background-color: #8e7cc3 !important;
+  color: white !important;
+}
+.dropdown-menu.custom-dropdown .dropdown-btn:hover {
+  filter: brightness(0.9);
+}
+
+/*
+.dropdown-menu.custom-dropdown {
+  position: fixed !important;
+  z-index: 9999;
+}
+*/
+
+.dropdown-btn {
+  white-space: normal !important;
+  word-wrap: break-word;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.btn-group .btn {
+  white-space: normal !important;
+  word-wrap: break-word;
+  text-align: left;
+  vertical-align: middle;
+}
+
+/* this line prevents caret from wrapping to next line */
+.btn-group {
+  position: relative;
+  white-space: nowrap;
+  display: inline-flex;
+}
+
+
+
+
+
+

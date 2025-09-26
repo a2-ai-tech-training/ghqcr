@@ -9,5 +9,9 @@
     "configure.win": "shellscript",
     "cleanup": "shellscript",
     "cleanup.win": "shellscript"
+  },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
   }
 }
