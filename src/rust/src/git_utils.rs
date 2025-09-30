@@ -1,6 +1,10 @@
 use extendr_api::{deserializer::from_robj, prelude::*, serializer::to_robj, Robj};
-use ghqctoolkit::{get_repo_users, DiskCache, GitHubReader, GitRepository};
-use serde::Deserialize;
+use ghqctoolkit::{
+    get_repo_users, DiskCache, GitCommitAnalysis, GitFileOps, GitHubReader, GitRepository,
+    IssueCommit, IssueThread,
+};
+use octocrab::models::issues::Issue;
+use serde::{Deserialize, Serialize};
 
 use crate::utils::get_rt;
 
@@ -64,4 +68,46 @@ pub fn get_users_impl(
             Robj::default()
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
+pub struct RIssueCommit {
+    pub hash: String,
+    pub message: String,
+    pub qc_class: String, // Will convert QCClass to String for R compatibility
+    pub edits_file: bool,
+}
+
+impl From<IssueCommit> for RIssueCommit {
+    fn from(commit: IssueCommit) -> Self {
+        Self {
+            hash: commit.hash.to_string(),
+            message: commit.message,
+            qc_class: commit.state.to_string(),
+            edits_file: commit.file_changed,
+        }
+    }
+}
+
+pub fn get_issue_commits_impl(
+    git_info: &(impl GitFileOps + GitRepository + GitHubReader + GitCommitAnalysis),
+    cache: Option<&DiskCache>,
+    issue_robj: &Robj,
+) -> Result<Vec<RIssueCommit>> {
+    let rt = get_rt();
+
+    // Deserialize the issue from R
+    let issue: Issue = from_robj(issue_robj)?;
+
+    // Create IssueThread from the issue
+    let issue_thread = rt
+        .block_on(IssueThread::from_issue(&issue, cache, git_info))
+        .map_err(|e| Error::Other(format!("Failed to create issue thread: {e}")))?;
+    let r_commits = issue_thread
+        .commits
+        .into_iter()
+        .map(RIssueCommit::from)
+        .collect::<Vec<_>>();
+
+    Ok(r_commits)
 }

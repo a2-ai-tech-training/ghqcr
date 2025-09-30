@@ -1,6 +1,7 @@
 mod configuration;
 mod create;
 mod git_utils;
+mod notify;
 mod utils;
 
 use std::sync::Once;
@@ -14,7 +15,8 @@ use crate::{
         get_checklists_impl, get_configuration_impl, setup_configuration_impl,
     },
     create::{create_issues_impl, file_git_status_impl},
-    git_utils::{get_milestone_issues_impl, get_milestones_impl, get_users_impl},
+    git_utils::{get_issue_commits_impl, get_milestone_issues_impl, get_milestones_impl, get_users_impl},
+    notify::get_multiple_milestone_issues_impl,
     utils::{get_cached_git_info, get_disk_cache},
 };
 
@@ -174,6 +176,24 @@ pub fn file_git_status_extr(files: Vec<String>, working_dir: &str) -> Result<Rob
     }
 }
 
+#[extendr]
+pub fn get_multiple_milestone_issues_extr(milestones: Robj, working_dir: &str) -> Result<Robj> {
+    let git_info = get_cached_git_info(working_dir)?;
+    get_multiple_milestone_issues_impl(git_info.as_ref(), &milestones)
+}
+
+#[extendr]
+pub fn get_issue_commits_extr(issue: Robj, working_dir: &str) -> Result<Robj> {
+    let git_info = get_cached_git_info(working_dir)?;
+    let cache = get_disk_cache(git_info.as_ref());
+    let results = get_issue_commits_impl(git_info.as_ref(), cache.as_ref(), &issue)?;
+
+    match results.into_dataframe() {
+        Ok(df) => Ok(df.into()),
+        Err(e) => Err(Error::Other(format!("Failed to create dataframe: {}", e))),
+    }
+}
+
 // Macro to generate exports.
 // This ensures exported functions are registered with R.
 // See corresponding C code in `entrypoint.c`.
@@ -195,4 +215,6 @@ extendr_module! {
     fn format_checklist_as_html_extr;
     fn read_to_string_extr;
     fn markdown_to_html_extr;
+    fn get_multiple_milestone_issues_extr;
+    fn get_issue_commits_extr;
 }

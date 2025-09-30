@@ -42,5 +42,9 @@ read_to_string_extr <- function(path) .Call(wrap__read_to_string_extr, path)
 
 markdown_to_html_extr <- function(content) .Call(wrap__markdown_to_html_extr, content)
 
+get_multiple_milestone_issues_extr <- function(milestones, working_dir) .Call(wrap__get_multiple_milestone_issues_extr, milestones, working_dir)
+
+get_issue_commits_extr <- function(issue, working_dir) .Call(wrap__get_issue_commits_extr, issue, working_dir)
+
 
 # nolint end

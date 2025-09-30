@@ -25,5 +25,6 @@ Imports:
     tibble,
     shinyjs,
     jsTreeR (>= 2.5.0),
-    shinyvalidate
+    shinyvalidate,
+    shinyWidgets
 

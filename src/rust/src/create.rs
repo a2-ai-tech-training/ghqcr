@@ -2,8 +2,8 @@ use std::path::Path;
 
 use extendr_api::{deserializer::from_robj, prelude::*, Robj};
 use ghqctoolkit::{
-    create_labels_if_needed, Checklist, DiskCache, GitFileOps, GitHubReader, GitHubWriter,
-    GitRepository, GitStatusOps, QCIssue,
+    create_labels_if_needed, find_file_commits, Checklist, DiskCache, GitFileOps, GitHubReader,
+    GitHubWriter, GitRepository, GitStatusOps, QCIssue,
 };
 use octocrab::models::Milestone;
 use serde::Deserialize;
@@ -242,26 +242,28 @@ pub fn file_git_status_impl(
         };
 
         // Check if file has commits (indicates it's git tracked)
-        let file_commits = match git_info.file_commits(Path::new(&file_path), &current_branch) {
+        let commits_res = git_info.commits(&current_branch);
+        let file_commits = match &commits_res {
             Ok(commits) => {
-                if commits.is_empty() {
+                let file_commits = find_file_commits(&file_path, &commits);
+                if file_commits.is_empty() {
                     log::debug!("No commits for file {file_path}");
                     result.is_git_tracked = false;
-                    None
+                    Vec::new()
                 } else {
                     result.is_git_tracked = true;
                     result.has_commits = !commits.is_empty();
-                    if let Some((first_commit, _)) = commits.first() {
-                        result.commit_hash = Some(first_commit.to_string());
+                    if let Some(first_commit) = commits.first() {
+                        result.commit_hash = Some(first_commit.commit.to_string());
                     }
-                    Some(commits.into_iter().map(|(id, _)| id).collect::<Vec<_>>())
+                    commits.iter().map(|c| &c.commit).collect::<Vec<_>>()
                 }
             }
             Err(e) => {
                 // File might not be tracked or other git error
                 log::debug!("Could not get commits for {}: {}", file_path, e);
                 result.is_git_tracked = false;
-                None
+                Vec::new()
             }
         };
 
