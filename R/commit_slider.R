@@ -37,6 +37,9 @@ commit_slider_server <- function(id, commits) {
         )
       }
 
+      # Reverse commit order so most recent is on the right (chronological order)
+      commits_df <- commits_df[nrow(commits_df):1, ]
+
       # Create commit labels (short hash only)
       commit_labels <- substr(commits_df$hash, 1, 7)
 
@@ -56,13 +59,63 @@ commit_slider_server <- function(id, commits) {
       # Cap the minimum width at 700px to accept overlap at high commit counts
       min_width <- min(calculated_min_width, 700)
 
-      # Set defaults to last two commits if available
-      default_from <- if (length(commit_labels) > 1) {
-        commit_labels[length(commit_labels) - 1]
+      # Set defaults based on sophisticated logic
+      # Find latest file-changing commit
+      file_changing_commits <- which(commits_df$edits_file == TRUE)
+      latest_file_changing <- if (length(file_changing_commits) > 0) {
+        max(file_changing_commits)
       } else {
-        commit_labels[1]
+        NULL
       }
-      default_to <- commit_labels[length(commit_labels)]
+
+      # Find latest non-no_comment commit
+      non_no_comment_commits <- which(commits_df$qc_class != "no_comment")
+      latest_non_no_comment <- if (length(non_no_comment_commits) > 0) {
+        max(non_no_comment_commits)
+      } else {
+        NULL
+      }
+
+      # Implement default selection logic
+      if (!is.null(latest_file_changing) && !is.null(latest_non_no_comment)) {
+        if (latest_file_changing > latest_non_no_comment) {
+          # Case 1: File-changing commit occurs after latest non-no_comment
+          default_from <- commit_labels[latest_non_no_comment]
+          default_to <- commit_labels[latest_file_changing]
+        } else {
+          # One selector on non-no_comment, other tries to be different file-changing
+          default_to <- commit_labels[latest_non_no_comment]
+
+          # Try to find a different file-changing commit
+          other_file_changing <- file_changing_commits[file_changing_commits != latest_non_no_comment]
+          if (length(other_file_changing) > 0) {
+            default_from <- commit_labels[max(other_file_changing)]
+          } else {
+            # Fall back to previous commit if available
+            default_from <- if (latest_non_no_comment > 1) {
+              commit_labels[latest_non_no_comment - 1]
+            } else {
+              commit_labels[min(2, length(commit_labels))]
+            }
+          }
+        }
+      } else if (!is.null(latest_non_no_comment)) {
+        # Only non-no_comment commits available
+        default_to <- commit_labels[latest_non_no_comment]
+        default_from <- if (latest_non_no_comment > 1) {
+          commit_labels[latest_non_no_comment - 1]
+        } else {
+          commit_labels[min(2, length(commit_labels))]
+        }
+      } else {
+        # Fallback to simple last two commits
+        default_from <- if (length(commit_labels) > 1) {
+          commit_labels[length(commit_labels) - 1]
+        } else {
+          commit_labels[1]
+        }
+        default_to <- commit_labels[length(commit_labels)]
+      }
 
       shiny::div(
         # Custom dual-handle commit slider
@@ -103,14 +156,38 @@ commit_slider_server <- function(id, commits) {
                 left_pos <- (i - 1) / (nrow(commits_df) - 1) * 100
               }
 
-              # Grey out commits that don't edit the file (even when included)
+              # Style based on both edits_file and qc_class
               edits_file <- commits_df$edits_file[i]
-              tick_color <- if (edits_file) "#666" else "#ccc"
-              label_color <- if (edits_file) "black" else "#999"
+              qc_class <- commits_df$qc_class[i]
+
+              # Define colors for QC classes (no color for no_comment)
+              qc_color <- switch(
+                qc_class,
+                "initial" = "#007bff", # Blue for initial
+                "notification" = "#ffc107", # Yellow for notification
+                "approval" = "#28a745", # Green for approval
+                "#ffffff" # No indicator for no_comment/default
+              )
+
+              # Dim colors if file not edited
+              if (!edits_file) {
+                tick_color <- "#ccc"
+                label_color <- "#999"
+              } else {
+                tick_color <- "#666"
+                label_color <- "black"
+              }
 
               shiny::div(
                 style = glue::glue(
-                  "position: absolute; left: {left_pos}%; top: 20px; transform: translateX(-50%);"
+                  "position: absolute; left: {left_pos}%; top: 8px; transform: translateX(-50%);"
+                ),
+                # QC class indicator (small colored circle)
+                shiny::div(
+                  style = glue::glue(
+                    "width: 8px; height: 8px; background: {qc_color}; border-radius: 50%; margin: 0 auto 4px auto;"
+                  ),
+                  title = glue::glue("QC Class: {qc_class}")
                 ),
                 # Tick mark
                 shiny::div(
@@ -221,9 +298,36 @@ commit_slider_server <- function(id, commits) {
         "
         ))),
 
+        # Legend for QC classes
+        shiny::div(
+          style = "margin-top: 15px; text-align: center; font-size: 12px;",
+          shiny::div(
+            style = "display: inline-flex; gap: 15px; align-items: center;",
+            shiny::div(
+              style = "display: flex; align-items: center; gap: 5px;",
+              shiny::div(
+                style = "width: 8px; height: 8px; background: #007bff; border-radius: 50%;"
+              ),
+              shiny::span("Initial")
+            ),
+            shiny::div(
+              style = "display: flex; align-items: center; gap: 5px;",
+              shiny::div(
+                style = "width: 8px; height: 8px; background: #ffc107; border-radius: 50%;"
+              ),
+              shiny::span("Notification")
+            ),
+            shiny::div(
+              style = "display: flex; align-items: center; gap: 5px;",
+              shiny::div(
+                style = "width: 8px; height: 8px; background: #28a745; border-radius: 50%;"
+              ),
+              shiny::span("Approval")
+            )
+          )
+        )
       )
     })
-
 
     # Return reactive values for the selected commits
     return(

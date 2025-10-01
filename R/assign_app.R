@@ -556,7 +556,7 @@ ghqc_assign_server <- function(
         character(0)
       }
 
-      modal_check <- assign_modal_check(git_statuses, duplicate_files)
+      modal_check <- git_issue_modal_check(git_statuses, duplicate_files)
 
       if (!is.null(modal_check$message)) {
         if (modal_check$state == "warning") {

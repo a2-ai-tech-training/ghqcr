@@ -1,9 +1,7 @@
-use std::path::Path;
-
 use extendr_api::{deserializer::from_robj, prelude::*, Robj};
 use ghqctoolkit::{
-    create_labels_if_needed, find_file_commits, Checklist, DiskCache, GitFileOps, GitHubReader,
-    GitHubWriter, GitRepository, GitStatusOps, QCIssue,
+    create_labels_if_needed, Checklist, DiskCache, GitFileOps, GitHubReader, GitHubWriter,
+    GitRepository, QCIssue,
 };
 use octocrab::models::Milestone;
 use serde::Deserialize;
@@ -201,80 +199,4 @@ fn create_qc_issue(
         checklist,
     )
     .map_err(|e| Error::Other(format!("{e}")))
-}
-
-#[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
-pub struct RFileGitStatus {
-    pub file_path: String,
-    pub is_git_tracked: bool,
-    pub has_commits: bool,
-    pub git_status: Option<String>,
-    pub commit_hash: Option<String>,
-    pub error_message: Option<String>,
-}
-
-pub fn file_git_status_impl(
-    files: Vec<String>,
-    git_info: &(impl GitFileOps + GitRepository + GitStatusOps),
-) -> Result<Vec<RFileGitStatus>> {
-    let mut results = Vec::new();
-
-    // Get git status once for efficiency
-    let git_status = match git_info.status() {
-        Ok(status) => Some(status),
-        Err(e) => {
-            log::warn!("Failed to get git status: {e}");
-            None
-        }
-    };
-
-    // Get current branch for commit detection
-    let current_branch = git_info.branch().ok();
-
-    for file_path in files {
-        let mut result = RFileGitStatus {
-            file_path: file_path.clone(),
-            is_git_tracked: false,
-            has_commits: false,
-            git_status: None,
-            commit_hash: None,
-            error_message: None,
-        };
-
-        // Check if file has commits (indicates it's git tracked)
-        let commits_res = git_info.commits(&current_branch);
-        let file_commits = match &commits_res {
-            Ok(commits) => {
-                let file_commits = find_file_commits(&file_path, &commits);
-                if file_commits.is_empty() {
-                    log::debug!("No commits for file {file_path}");
-                    result.is_git_tracked = false;
-                    Vec::new()
-                } else {
-                    result.is_git_tracked = true;
-                    result.has_commits = !commits.is_empty();
-                    if let Some(first_commit) = commits.first() {
-                        result.commit_hash = Some(first_commit.commit.to_string());
-                    }
-                    commits.iter().map(|c| &c.commit).collect::<Vec<_>>()
-                }
-            }
-            Err(e) => {
-                // File might not be tracked or other git error
-                log::debug!("Could not get commits for {}: {}", file_path, e);
-                result.is_git_tracked = false;
-                Vec::new()
-            }
-        };
-
-        // Get git status for the file if available
-        if let Some(ref git_status) = git_status {
-            let formatted_status = git_status.format_for_file(Path::new(&file_path), &file_commits);
-            result.git_status = Some(formatted_status);
-        }
-
-        results.push(result);
-    }
-
-    Ok(results)
 }

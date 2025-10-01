@@ -46,5 +46,12 @@ get_multiple_milestone_issues_extr <- function(milestones, working_dir) .Call(wr
 
 get_issue_commits_extr <- function(issue, working_dir) .Call(wrap__get_issue_commits_extr, issue, working_dir)
 
+create_qc_comment_extr <- function(issue, filename, from_commit, to_commit, message, show_diff) .Call(wrap__create_qc_comment_extr, issue, filename, from_commit, to_commit, message, show_diff)
+
+get_qc_comment_body_html_extr <- function(qc_comment, working_dir) .Call(wrap__get_qc_comment_body_html_extr, qc_comment, working_dir)
+
+#' Post a QC comment to GitHub
+post_qc_comment_extr <- function(qc_comment, working_dir) .Call(wrap__post_qc_comment_extr, qc_comment, working_dir)
+
 
 # nolint end

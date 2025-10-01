@@ -23,6 +23,27 @@ ghqc_notify_ui <- function(id) {
         type = "text/css",
         href = "ghqcr/css/styles.css"
       ),
+      shiny::tags$style(
+        HTML(
+          "
+          /* Reduce spacing between dropdowns and their associated checkboxes */
+          #ghqc_notify_app-select_milestone {
+            margin-bottom: 5px;
+          }
+          .shiny-input-container:has(#ghqc_notify_app-include_closed_milestones) {
+            margin-top: 0px;
+            margin-bottom: 15px;
+          }
+          #ghqc_notify_app-select_issue {
+            margin-bottom: 5px;
+          }
+          .shiny-input-container:has(#ghqc_notify_app-include_closed_issues) {
+            margin-top: 0px;
+            margin-bottom: 15px;
+          }
+        "
+        )
+      )
     ),
     waiter::waiter_show_on_load(
       html = shiny::tagList(
@@ -58,11 +79,21 @@ ghqc_notify_ui <- function(id) {
             choices = "",
             multiple = FALSE
           ),
+          shiny::checkboxInput(
+            ns("include_closed_milestones"),
+            "Include Closed Milestones",
+            value = FALSE
+          ),
           shiny::selectInput(
             ns("select_issue"),
             "Select Issue",
             choices = "",
             multiple = FALSE
+          ),
+          shiny::checkboxInput(
+            ns("include_closed_issues"),
+            "Include Closed Issues",
+            value = FALSE
           ),
           shiny::textAreaInput(
             ns("message"),
@@ -81,7 +112,7 @@ ghqc_notify_ui <- function(id) {
             ns("include_non_editing"),
             "Commit filter:",
             choices = list(
-              "File-editing commits only" = FALSE,
+              "Relevant commits only" = FALSE,
               "All commits" = TRUE
             ),
             selected = FALSE,
@@ -90,7 +121,7 @@ ghqc_notify_ui <- function(id) {
           shiny::uiOutput(ns("commit_range_slider")),
           shiny::div(
             id = ns("from_commit_display"),
-            style = "text-align: left; margin-bottom: 5px;",
+            style = "text-align: left; margin-bottom: 5px; margin-top: 20px;",
             shiny::span(
               "From: ",
               style = "font-weight: bold; margin-right: 5px;"
@@ -132,15 +163,21 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
+    # Smart loading system: track what we've loaded
+    loaded_milestone_issues <- shiny::reactiveVal(list()) # Store all loaded milestone issues
+    loaded_milestone_names <- shiny::reactiveVal(character(0)) # Track which milestones we've loaded
+
+    # Initially load only open milestones and their issues
     open_milestones <- milestones[milestone_df$open]
-    multiple_milestone_issues <- get_multiple_milestone_issues(
+    initial_milestone_issues <- get_multiple_milestone_issues(
       open_milestones,
       working_dir
     )
-    milestone_issue_df <- flatten_multiple_milestone_issues(
-      multiple_milestone_issues
-    )
-    .le$debug("Successfully fetched Milestones and Issues for open Milestones")
+
+    # Store the initial loaded data
+    loaded_milestone_issues(initial_milestone_issues)
+    loaded_milestone_names(names(initial_milestone_issues))
+
 
     reset_triggered <- shiny::reactiveVal(FALSE)
     session$onSessionEnded(function() {
@@ -154,6 +191,15 @@ ghqc_notify_server <- function(id, working_dir) {
     # Reactive value to store current issue commits
     current_issue_commits <- shiny::reactiveVal(NULL)
 
+    # Reactive value to track when we're ready to preview
+    ready_to_preview <- shiny::reactiveVal(FALSE)
+
+    # Reactive value to store commit slider result
+    commit_slider_result <- shiny::reactiveVal(NULL)
+
+    # Reactive value to store the current qc_comment for posting
+    current_qc_comment <- shiny::reactiveVal(NULL)
+
     shiny::observe(waiter::waiter_hide())
 
     # Initialize the commit range slider with placeholder
@@ -166,30 +212,156 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
-    shiny::observe({
+    # Smart loading function
+    load_missing_milestones <- function(needed_milestone_names) {
+      current_loaded <- loaded_milestone_names()
+      missing_names <- setdiff(needed_milestone_names, current_loaded)
+
+      if (length(missing_names) > 0) {
+
+        # Find the milestone objects for the missing ones
+        missing_milestones <- milestones[sapply(milestones, function(m) {
+          m$title %in% missing_names
+        })]
+
+        if (length(missing_milestones) > 0) {
+          # Load issues for missing milestones
+          new_milestone_issues <- get_multiple_milestone_issues(
+            missing_milestones,
+            working_dir
+          )
+
+          # Merge with existing loaded data
+          current_issues <- loaded_milestone_issues()
+          updated_issues <- c(current_issues, new_milestone_issues)
+          loaded_milestone_issues(updated_issues)
+          loaded_milestone_names(names(updated_issues))
+        }
+      }
+    }
+
+    # Reactive for filtered milestone names based on checkbox
+    filtered_milestone_names <- shiny::reactive({
       shiny::req(milestone_df)
 
-      open_milestone_names <- if (nrow(milestone_df) == 0) {
-        c()
+      if (nrow(milestone_df) == 0) {
+        return(c())
+      }
+
+      if (input$include_closed_milestones) {
+        # Include all milestones
+        milestone_df |> dplyr::pull(name)
       } else {
+        # Only open milestones
         milestone_df |>
           dplyr::filter(open) |>
           dplyr::pull(name)
       }
+    })
+
+    # Reactive for current milestone issues with smart loading
+    current_milestone_issues <- shiny::reactive({
+      # Only load additional milestones if the checkbox input is available and checked
+      if (
+        !is.null(input$include_closed_milestones) &&
+          isTRUE(input$include_closed_milestones)
+      ) {
+        needed_milestones <- milestone_df |> dplyr::pull(name)
+        load_missing_milestones(needed_milestones)
+      }
+
+      # Return the currently loaded issues
+      loaded_milestone_issues()
+    })
+
+    # Update milestone choices when checkbox changes
+    shiny::observe({
+      milestone_names <- filtered_milestone_names()
 
       shiny::updateSelectizeInput(
         session,
         "select_milestone",
-        choices = c("All Issues", open_milestone_names)
+        choices = c("All Issues", milestone_names)
       )
     })
 
+    # Handle Include Closed Milestones checkbox - load missing milestones if "All Issues" is selected
+    shiny::observeEvent(input$include_closed_milestones, {
+
+      if (
+        !is.null(input$select_milestone) &&
+          input$select_milestone == "All Issues"
+      ) {
+        if (isTRUE(input$include_closed_milestones)) {
+          # Checkbox checked: Load all missing milestones
+
+          # Load all milestones that we haven't loaded yet
+          all_milestone_names <- milestone_df |> dplyr::pull(name)
+          load_missing_milestones(all_milestone_names)
+
+          # Update the issue list with all milestones
+          current_issues <- loaded_milestone_issues()
+          milestone_issue_df <- flatten_multiple_milestone_issues(
+            current_issues
+          )
+        } else {
+          # Checkbox unchecked: Filter out closed milestone issues
+
+          # Get only open milestones' issues
+          current_issues <- loaded_milestone_issues()
+          open_milestone_names <- milestone_df |>
+            dplyr::filter(open) |>
+            dplyr::pull(name)
+
+          # Filter loaded issues to only include open milestones
+          open_milestone_issues <- current_issues[
+            names(current_issues) %in% open_milestone_names
+          ]
+          milestone_issue_df <- flatten_multiple_milestone_issues(
+            open_milestone_issues
+          )
+        }
+
+        # Apply closed issues filter
+        include_closed_issues <- isTRUE(input$include_closed_issues)
+
+        if (!include_closed_issues) {
+          milestone_issue_df <- milestone_issue_df |>
+            dplyr::filter(open == TRUE)
+        }
+
+        shiny::updateSelectizeInput(
+          session,
+          "select_issue",
+          choices = milestone_issue_df |> format_issues()
+        )
+      }
+    })
+
     shiny::observeEvent(input$select_milestone, {
+      shiny::req(input$select_milestone)
+
+      # If a specific milestone is selected, ensure we have its issues loaded
+      if (input$select_milestone != "All Issues") {
+        load_missing_milestones(input$select_milestone)
+      }
+
+      # Get the current milestone issues and filter
+      current_issues <- current_milestone_issues()
+      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
+
       issue_choices <- if (input$select_milestone == "All Issues") {
         milestone_issue_df
       } else {
         milestone_issue_df |>
           dplyr::filter(milestone == input$select_milestone)
+      }
+
+      # Apply closed issues filter (default to FALSE if input not available)
+      include_closed <- isTRUE(input$include_closed_issues)
+
+      if (!include_closed) {
+        issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
       }
 
       shiny::updateSelectizeInput(
@@ -199,9 +371,42 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
+    # Also update issue choices when closed issues checkbox changes
+    shiny::observeEvent(input$include_closed_issues, {
+      if (!is.null(input$select_milestone) && input$select_milestone != "") {
+        # Directly update the issue choices instead of triggering milestone observer
+        current_issues <- current_milestone_issues()
+        milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
+
+        issue_choices <- if (input$select_milestone == "All Issues") {
+          milestone_issue_df
+        } else {
+          milestone_issue_df |>
+            dplyr::filter(milestone == input$select_milestone)
+        }
+
+        # Apply closed issues filter
+        include_closed <- isTRUE(input$include_closed_issues)
+
+        if (!include_closed) {
+          issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
+        }
+
+        shiny::updateSelectizeInput(
+          session,
+          "select_issue",
+          choices = issue_choices |> format_issues()
+        )
+      }
+    })
+
     # Get commits when an issue is selected
     shiny::observeEvent(input$select_issue, {
       shiny::req(input$select_issue)
+
+      # Get current milestone issues and flatten for searching
+      current_issues <- current_milestone_issues()
+      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
 
       # Find the selected issue from the flattened data
       selected_issue_info <- milestone_issue_df |>
@@ -215,13 +420,17 @@ ghqc_notify_server <- function(id, working_dir) {
         return()
       }
 
-      # Find the actual issue object from multiple_milestone_issues
+      # Find the actual issue object from loaded milestone issues
       milestone_name <- selected_issue_info$milestone
       issue_number <- selected_issue_info$number
 
+      # Ensure we have the milestone loaded
+      load_missing_milestones(milestone_name)
+      current_issues <- loaded_milestone_issues()
+
       selected_issue <- NULL
-      if (milestone_name %in% names(multiple_milestone_issues)) {
-        milestone_issues <- multiple_milestone_issues[[milestone_name]]
+      if (milestone_name %in% names(current_issues)) {
+        milestone_issues <- current_issues[[milestone_name]]
         for (issue in milestone_issues) {
           if (issue$number == issue_number) {
             selected_issue <- issue
@@ -234,7 +443,7 @@ ghqc_notify_server <- function(id, working_dir) {
         shiny::showModal(shiny::modalDialog(
           title = "Error",
           "Could not find the selected issue. Please try again.",
-          footer = shiny::modalButton("OK"),
+          footer = shiny::modalButton("Return"),
           easyClose = TRUE
         ))
         return()
@@ -259,7 +468,7 @@ ghqc_notify_server <- function(id, working_dir) {
               ),
               shiny::p("The timeline will be disabled for this issue.")
             ),
-            footer = shiny::modalButton("OK"),
+            footer = shiny::modalButton("Return"),
             easyClose = TRUE
           ))
           NULL
@@ -295,7 +504,7 @@ ghqc_notify_server <- function(id, working_dir) {
         })
 
         # Initialize commit slider server with checkbox input
-        commit_slider_result <- commit_slider_server(
+        slider_result <- commit_slider_server(
           "commit_slider",
           reactive({
             if (is.null(current_issue_commits())) {
@@ -306,20 +515,27 @@ ghqc_notify_server <- function(id, working_dir) {
             if (input$include_non_editing) {
               current_issue_commits()
             } else {
+              # Show commits that either edit files OR have QC significance
               current_issue_commits()[
-                current_issue_commits()$edits_file == TRUE,
+                current_issue_commits()$edits_file == TRUE |
+                  current_issue_commits()$qc_class != "no_comment",
               ]
             }
           })
         )
 
+        # Store in reactive value for access elsewhere
+        commit_slider_result(slider_result)
+
         # Connect module outputs to main app displays
         output$from_commit_text <- shiny::renderText({
+          slider_result <- commit_slider_result()
           if (
-            !is.null(commit_slider_result$from_commit()) &&
+            !is.null(slider_result) &&
+              !is.null(slider_result$from_commit()) &&
               !is.null(current_issue_commits())
           ) {
-            selected_sha <- commit_slider_result$from_commit()
+            selected_sha <- slider_result$from_commit()
             commits_df <- current_issue_commits()
             matching_commit <- commits_df[
               substr(commits_df$hash, 1, 7) == selected_sha,
@@ -335,11 +551,13 @@ ghqc_notify_server <- function(id, working_dir) {
         })
 
         output$to_commit_text <- shiny::renderText({
+          slider_result <- commit_slider_result()
           if (
-            !is.null(commit_slider_result$to_commit()) &&
+            !is.null(slider_result) &&
+              !is.null(slider_result$to_commit()) &&
               !is.null(current_issue_commits())
           ) {
-            selected_sha <- commit_slider_result$to_commit()
+            selected_sha <- slider_result$to_commit()
             commits_df <- current_issue_commits()
             matching_commit <- commits_df[
               substr(commits_df$hash, 1, 7) == selected_sha,
@@ -354,6 +572,440 @@ ghqc_notify_server <- function(id, working_dir) {
           }
         })
       }
+    })
+
+    # Preview and post comment flow
+    shiny::observeEvent(input$preview, {
+      shiny::req(input$select_issue)
+
+      # Extract file name from selected issue title
+      # Issue titles should be in format like "QC [filename]" or similar
+      selected_issue_text <- input$select_issue
+
+      # Get current milestone issues and flatten for searching
+      current_issues <- current_milestone_issues()
+      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
+
+      # Find the selected issue object to get its title
+      selected_issue_info <- milestone_issue_df |>
+        dplyr::filter(
+          glue::glue("Issue {number}: {name}") == selected_issue_text |
+            glue::glue("Issue {number}: {name} (closed)") == selected_issue_text
+        ) |>
+        dplyr::slice(1)
+
+      if (nrow(selected_issue_info) == 0) {
+        shiny::showModal(shiny::modalDialog(
+          title = "Error",
+          "Could not find the selected issue. Please try again.",
+          footer = shiny::modalButton("Return"),
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Extract filename from issue title
+      filename <- selected_issue_info$name
+
+      # Get git status for the file
+      git_status_result <- tryCatch(
+        {
+          .catch(file_git_status_extr(c(filename), working_dir))
+        },
+        error = function(e) {
+          .le$debug(glue::glue("Error getting git status: {e$message}"))
+          shiny::showModal(shiny::modalDialog(
+            title = "Git Status Error",
+            glue::glue("Could not check git status for file: {filename}"),
+            footer = shiny::modalButton("Return"),
+            easyClose = TRUE
+          ))
+          return(NULL)
+        }
+      )
+
+      if (is.null(git_status_result)) {
+        return()
+      }
+
+      # Check for git issues using the modal check function
+      modal_result <- git_issue_modal_check(git_status_result, character(0))
+
+      if (!is.null(modal_result$message)) {
+        # Show modal with git status warnings/errors
+        modal_title <- if (modal_result$state == "error") {
+          "Git Issues Found - Cannot Proceed"
+        } else {
+          "Git Status Warning"
+        }
+
+        footer_buttons <- if (modal_result$state == "error") {
+          shiny::modalButton("Return")
+        } else {
+          shiny::tagList(
+            shiny::modalButton("Cancel"),
+            shiny::actionButton(
+              "proceed_anyway",
+              "Proceed Anyway",
+              class = "btn-warning"
+            )
+          )
+        }
+
+        shiny::showModal(shiny::modalDialog(
+          title = modal_title,
+          shiny::HTML(modal_result$message),
+          footer = footer_buttons,
+          easyClose = modal_result$state != "error"
+        ))
+
+        # If it's just a warning, we could proceed, but for now just stop
+        return()
+      }
+
+      # If we get here, git status is clean - proceed to next step (QC comment creation)
+      ready_to_preview(TRUE)
+    })
+
+    # Handle proceed anyway button for warnings
+    shiny::observeEvent(input$proceed_anyway, {
+      shiny::removeModal()
+      ready_to_preview(TRUE)
+    })
+
+    # Create QCComment and show preview when ready
+    shiny::observeEvent(ready_to_preview(), {
+      shiny::req(ready_to_preview() == TRUE)
+      shiny::req(input$select_issue)
+
+      # Reset the reactive val
+      ready_to_preview(FALSE)
+
+      # Get the current state for QCComment creation
+      selected_issue_text <- input$select_issue
+
+      # Get current milestone issues and flatten for searching
+      current_issues <- current_milestone_issues()
+      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
+
+      # Find the selected issue object to get its title and the actual issue
+      selected_issue_info <- milestone_issue_df |>
+        dplyr::filter(
+          glue::glue("Issue {number}: {name}") == selected_issue_text |
+            glue::glue("Issue {number}: {name} (closed)") == selected_issue_text
+        ) |>
+        dplyr::slice(1)
+
+      if (nrow(selected_issue_info) == 0) {
+        return()
+      }
+
+      # Find the actual issue object
+      milestone_name <- selected_issue_info$milestone
+      issue_number <- selected_issue_info$number
+
+      # Ensure we have the milestone loaded
+      load_missing_milestones(milestone_name)
+      current_issues <- loaded_milestone_issues()
+
+      selected_issue <- NULL
+      if (milestone_name %in% names(current_issues)) {
+        milestone_issues <- current_issues[[milestone_name]]
+        for (issue in milestone_issues) {
+          if (issue$number == issue_number) {
+            selected_issue <- issue
+            break
+          }
+        }
+      }
+
+      if (is.null(selected_issue)) {
+        return()
+      }
+
+      # Check if commit slider is available
+      slider_result <- commit_slider_result()
+      if (is.null(slider_result) || is.null(current_issue_commits())) {
+        shiny::showModal(shiny::modalDialog(
+          title = "No Commits Available",
+          "Please select an issue with available commits to preview.",
+          footer = shiny::modalButton("Return"),
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Get commit selection (short hashes)
+      from_commit_short <- slider_result$from_commit()
+      to_commit_short <- slider_result$to_commit()
+      message <- input$message
+      show_diff <- input$show_diff
+
+      if (is.null(from_commit_short) || is.null(to_commit_short)) {
+        shiny::showModal(shiny::modalDialog(
+          title = "Commit Selection Required",
+          "Please select both 'from' and 'to' commits using the timeline slider.",
+          footer = shiny::modalButton("Return"),
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Look up full commit hashes from commits_df
+      commits_df <- current_issue_commits()
+      from_commit_match <- commits_df[
+        substr(commits_df$hash, 1, 7) == from_commit_short,
+      ]
+      to_commit_match <- commits_df[
+        substr(commits_df$hash, 1, 7) == to_commit_short,
+      ]
+
+      if (nrow(from_commit_match) == 0 || nrow(to_commit_match) == 0) {
+        shiny::showModal(shiny::modalDialog(
+          title = "Commit Not Found",
+          "Could not find the selected commits in the timeline.",
+          footer = shiny::modalButton("Return"),
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Get full hashes
+      from_commit <- from_commit_match$hash[1]
+      to_commit <- to_commit_match$hash[1]
+
+      # Extract filename from issue title
+      filename <- selected_issue_info$name
+
+      # Validate filename
+      if (is.null(filename) || is.na(filename) || nchar(filename) == 0) {
+        shiny::showModal(shiny::modalDialog(
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Invalid Filename",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
+          "The selected issue does not have a valid filename.",
+          footer = NULL,
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Create QCComment with additional safety checks
+      qc_comment <- tryCatch(
+        {
+          # Additional validation
+          if (nchar(from_commit) != 40 || nchar(to_commit) != 40) {
+            stop(glue::glue(
+              "Invalid commit hash lengths - from: {nchar(from_commit)}, to: {nchar(to_commit)}"
+            ))
+          }
+
+          qc_comment <- .catch(create_qc_comment_extr(
+            fix_issue_ids(selected_issue),
+            filename,
+            from_commit,
+            to_commit,
+            if (nchar(message) > 0) message else NULL,
+            show_diff
+          ))
+          qc_comment$issue <- fix_issue_ids(qc_comment$issue)
+
+          # Store the qc_comment for later use in posting
+          current_qc_comment(qc_comment)
+
+          qc_comment
+        },
+        error = function(e) {
+          .le$debug(glue::glue("Error creating QC comment: {e$message}"))
+          shiny::showModal(shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "QC Comment Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+            ),
+            glue::glue("Could not create QC comment: {e$message}"),
+            footer = NULL,
+            easyClose = TRUE
+          ))
+          return(NULL)
+        }
+      )
+
+      if (is.null(qc_comment)) {
+        return()
+      }
+
+      # Get HTML body from QC comment
+      comment_html <- tryCatch(
+        {
+          .catch(get_qc_comment_body_html_extr(qc_comment, working_dir))
+        },
+        error = function(e) {
+          .le$debug(glue::glue("Error getting QC comment body: {e$message}"))
+          shiny::showModal(shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Preview Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+            ),
+            glue::glue("Could not generate comment preview: {e$message}"),
+            footer = NULL,
+            easyClose = TRUE
+          ))
+          return(NULL)
+        }
+      )
+
+      if (is.null(comment_html)) {
+        return()
+      }
+
+      # Show preview modal with HTML body
+      shiny::showModal(shiny::modalDialog(
+        title = shiny::tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+          shiny::tags$div(
+            shiny::modalButton("Return"),
+            style = "flex: 0 0 auto;"
+          ),
+          shiny::tags$div(
+            "Preview QC Comment",
+            style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+          ),
+          shiny::tags$div(
+            shiny::actionButton(
+              session$ns("post_comment"),
+              "Post Comment",
+              class = "btn-primary"
+            ),
+            style = "flex: 0 0 auto;"
+          )
+        ),
+        size = "l",
+        shiny::div(
+          style = "max-height: 500px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa;",
+          shiny::HTML(comment_html)
+        ),
+        footer = NULL,
+        easyClose = FALSE
+      ))
+    })
+
+    # Handle posting the comment when Post Comment button is clicked
+    shiny::observeEvent(input$post_comment, {
+      shiny::removeModal() # Close the preview modal
+
+      # Get the stored qc_comment from the reactive value
+      qc_comment <- current_qc_comment()
+
+      if (is.null(qc_comment)) {
+        shiny::showModal(shiny::modalDialog(
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Post Error",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;")
+          ),
+          "No QC comment available for posting. Please try previewing first.",
+          footer = NULL,
+          easyClose = TRUE
+        ))
+        return()
+      }
+
+      # Post the comment
+      post_result <- tryCatch(
+        {
+          .catch(post_qc_comment_extr(qc_comment, working_dir))
+        },
+        error = function(e) {
+          .le$debug(glue::glue("Error posting QC comment: {e$message}"))
+          shiny::showModal(shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Post Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;")
+            ),
+            glue::glue("Could not post QC comment: {e$message}"),
+            footer = NULL,
+            easyClose = TRUE
+          ))
+          return(NULL)
+        }
+      )
+
+      if (!is.null(post_result)) {
+        # Success! Show success modal
+        shiny::showModal(shiny::modalDialog(
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Close"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Success",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;")
+          ),
+          shiny::div(
+            shiny::p("QC comment posted successfully!"),
+            shiny::HTML(markdown_to_html_extr(glue::glue(
+              "[Click here to view comment on GitHub]({post_result})"
+            )))
+          ),
+          footer = NULL,
+          easyClose = TRUE
+        ))
+      }
+    })
+
+    # Handle close button
+    shiny::observeEvent(input$close, {
+      shiny::stopApp()
+    })
+
+    # Handle reset button
+    shiny::observeEvent(input$reset, {
+      reset_triggered(TRUE)
+      session$reload()
     })
   })
 }
