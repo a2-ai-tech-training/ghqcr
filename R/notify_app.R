@@ -159,6 +159,7 @@ ghqc_notify_server <- function(id, working_dir) {
     milestone_df <- purrr::map_dfr(milestones, function(x) {
       tibble::tibble(
         name = x$title,
+        number = x$number,
         open = identical(x$state, "open")
       )
     })
@@ -249,12 +250,15 @@ ghqc_notify_server <- function(id, working_dir) {
       }
 
       if (input$include_closed_milestones) {
-        # Include all milestones
-        milestone_df |> dplyr::pull(name)
+        # Include all milestones, sorted by number (reverse)
+        milestone_df |>
+          dplyr::arrange(dplyr::desc(number)) |>
+          dplyr::pull(name)
       } else {
-        # Only open milestones
+        # Only open milestones, sorted by number (reverse)
         milestone_df |>
           dplyr::filter(open) |>
+          dplyr::arrange(dplyr::desc(number)) |>
           dplyr::pull(name)
       }
     })
@@ -277,11 +281,21 @@ ghqc_notify_server <- function(id, working_dir) {
     # Update milestone choices when checkbox changes
     shiny::observe({
       milestone_names <- filtered_milestone_names()
+      current_selection <- input$select_milestone
+
+      # Preserve current selection if it's still valid
+      new_choices <- c("All Issues", milestone_names)
+      selected_value <- if (!is.null(current_selection) && current_selection %in% new_choices) {
+        current_selection
+      } else {
+        NULL # Let Shiny handle default selection
+      }
 
       shiny::updateSelectizeInput(
         session,
         "select_milestone",
-        choices = c("All Issues", milestone_names)
+        choices = new_choices,
+        selected = selected_value
       )
     })
 
@@ -330,10 +344,20 @@ ghqc_notify_server <- function(id, working_dir) {
             dplyr::filter(open == TRUE)
         }
 
+        # Preserve current issue selection if it's still valid
+        current_issue_selection <- input$select_issue
+        new_issue_choices <- milestone_issue_df |> format_issues()
+        selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+          current_issue_selection
+        } else {
+          NULL # Let Shiny handle default selection
+        }
+
         shiny::updateSelectizeInput(
           session,
           "select_issue",
-          choices = milestone_issue_df |> format_issues()
+          choices = new_issue_choices,
+          selected = selected_issue_value
         )
       }
     })
@@ -364,10 +388,20 @@ ghqc_notify_server <- function(id, working_dir) {
         issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
       }
 
+      # Preserve current issue selection if it's still valid
+      current_issue_selection <- input$select_issue
+      new_issue_choices <- issue_choices |> format_issues()
+      selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+        current_issue_selection
+      } else {
+        NULL # Let Shiny handle default selection
+      }
+
       shiny::updateSelectizeInput(
         session,
         "select_issue",
-        choices = issue_choices |> format_issues()
+        choices = new_issue_choices,
+        selected = selected_issue_value
       )
     })
 
@@ -392,10 +426,20 @@ ghqc_notify_server <- function(id, working_dir) {
           issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
         }
 
+        # Preserve current issue selection if it's still valid
+        current_issue_selection <- input$select_issue
+        new_issue_choices <- issue_choices |> format_issues()
+        selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+          current_issue_selection
+        } else {
+          NULL # Let Shiny handle default selection
+        }
+
         shiny::updateSelectizeInput(
           session,
           "select_issue",
-          choices = issue_choices |> format_issues()
+          choices = new_issue_choices,
+          selected = selected_issue_value
         )
       }
     })
@@ -441,9 +485,20 @@ ghqc_notify_server <- function(id, working_dir) {
 
       if (is.null(selected_issue)) {
         shiny::showModal(shiny::modalDialog(
-          title = "Error",
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Error",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
           "Could not find the selected issue. Please try again.",
-          footer = shiny::modalButton("Return"),
+          footer = NULL,
           easyClose = TRUE
         ))
         return()
@@ -457,7 +512,18 @@ ghqc_notify_server <- function(id, working_dir) {
         error = function(e) {
           .le$debug(glue::glue("Error getting issue commits: {e$message}"))
           shiny::showModal(shiny::modalDialog(
-            title = "Unable to Load Commits",
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Unable to Load Commits",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+            ),
             shiny::div(
               shiny::p("Could not retrieve commit history for this issue."),
               shiny::p("This may happen if:"),
@@ -468,7 +534,7 @@ ghqc_notify_server <- function(id, working_dir) {
               ),
               shiny::p("The timeline will be disabled for this issue.")
             ),
-            footer = shiny::modalButton("Return"),
+            footer = NULL,
             easyClose = TRUE
           ))
           NULL
@@ -596,9 +662,20 @@ ghqc_notify_server <- function(id, working_dir) {
 
       if (nrow(selected_issue_info) == 0) {
         shiny::showModal(shiny::modalDialog(
-          title = "Error",
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Error",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
           "Could not find the selected issue. Please try again.",
-          footer = shiny::modalButton("Return"),
+          footer = NULL,
           easyClose = TRUE
         ))
         return()
@@ -615,9 +692,20 @@ ghqc_notify_server <- function(id, working_dir) {
         error = function(e) {
           .le$debug(glue::glue("Error getting git status: {e$message}"))
           shiny::showModal(shiny::modalDialog(
-            title = "Git Status Error",
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Git Status Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+            ),
             glue::glue("Could not check git status for file: {filename}"),
-            footer = shiny::modalButton("Return"),
+            footer = NULL,
             easyClose = TRUE
           ))
           return(NULL)
@@ -633,21 +721,46 @@ ghqc_notify_server <- function(id, working_dir) {
 
       if (!is.null(modal_result$message)) {
         # Show modal with git status warnings/errors
-        modal_title <- if (modal_result$state == "error") {
+        modal_title_text <- if (modal_result$state == "error") {
           "Git Issues Found - Cannot Proceed"
         } else {
           "Git Status Warning"
         }
 
-        footer_buttons <- if (modal_result$state == "error") {
-          shiny::modalButton("Return")
+        # Create title with appropriate buttons
+        modal_title <- if (modal_result$state == "error") {
+          # Error state: only Return button on left
+          shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              modal_title_text,
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          )
         } else {
-          shiny::tagList(
-            shiny::modalButton("Cancel"),
-            shiny::actionButton(
-              "proceed_anyway",
-              "Proceed Anyway",
-              class = "btn-warning"
+          # Warning state: Return on left, Proceed Anyway on right
+          shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              modal_title_text,
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(
+              shiny::actionButton(
+                "proceed_anyway",
+                "Proceed Anyway",
+                class = "btn-warning"
+              ),
+              style = "flex: 0 0 auto;"
             )
           )
         }
@@ -655,7 +768,7 @@ ghqc_notify_server <- function(id, working_dir) {
         shiny::showModal(shiny::modalDialog(
           title = modal_title,
           shiny::HTML(modal_result$message),
-          footer = footer_buttons,
+          footer = NULL,
           easyClose = modal_result$state != "error"
         ))
 
@@ -727,9 +840,20 @@ ghqc_notify_server <- function(id, working_dir) {
       slider_result <- commit_slider_result()
       if (is.null(slider_result) || is.null(current_issue_commits())) {
         shiny::showModal(shiny::modalDialog(
-          title = "No Commits Available",
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "No Commits Available",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
           "Please select an issue with available commits to preview.",
-          footer = shiny::modalButton("Return"),
+          footer = NULL,
           easyClose = TRUE
         ))
         return()
@@ -743,9 +867,20 @@ ghqc_notify_server <- function(id, working_dir) {
 
       if (is.null(from_commit_short) || is.null(to_commit_short)) {
         shiny::showModal(shiny::modalDialog(
-          title = "Commit Selection Required",
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Commit Selection Required",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
           "Please select both 'from' and 'to' commits using the timeline slider.",
-          footer = shiny::modalButton("Return"),
+          footer = NULL,
           easyClose = TRUE
         ))
         return()
@@ -762,9 +897,20 @@ ghqc_notify_server <- function(id, working_dir) {
 
       if (nrow(from_commit_match) == 0 || nrow(to_commit_match) == 0) {
         shiny::showModal(shiny::modalDialog(
-          title = "Commit Not Found",
+          title = shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              "Commit Not Found",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          ),
           "Could not find the selected commits in the timeline.",
-          footer = shiny::modalButton("Return"),
+          footer = NULL,
           easyClose = TRUE
         ))
         return()
@@ -976,7 +1122,7 @@ ghqc_notify_server <- function(id, working_dir) {
           title = shiny::tags$div(
             style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
             shiny::tags$div(
-              shiny::modalButton("Close"),
+              shiny::modalButton("Return"),
               style = "flex: 0 0 auto;"
             ),
             shiny::tags$div(
@@ -1011,14 +1157,29 @@ ghqc_notify_server <- function(id, working_dir) {
 }
 
 # takes in a list of milestones, with sublist issues and
-# returns a df with columns Milestone, Number, Name, Open
+# returns a df with columns Milestone, Number, Name, Open, MilestoneNumber
 flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
   purrr::imap_dfr(
     multiple_milestone_issues,
     function(milestone_issues, milestone_name) {
       purrr::map_dfr(milestone_issues, function(issue) {
+        # Extract milestone number from the issue's milestone object
+        milestone_number <- if (!is.null(issue$milestone) && !is.null(issue$milestone$number)) {
+          issue$milestone$number
+        } else {
+          # Fallback: extract number from milestone name if it follows a pattern
+          # This handles cases where milestone name is like "v1.0", "Release 2.1", etc.
+          milestone_name_pattern <- stringr::str_extract(milestone_name, "\\d+(\\.\\d+)*")
+          if (!is.na(milestone_name_pattern)) {
+            as.numeric(stringr::str_replace_all(milestone_name_pattern, "\\.", ""))
+          } else {
+            0 # Default fallback
+          }
+        }
+
         tibble::tibble(
           milestone = milestone_name,
+          milestone_number = milestone_number,
           number = issue$number,
           name = issue$title,
           open = identical(issue$state, "open")
@@ -1030,6 +1191,7 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
 
 format_issues <- function(milestone_issue_df) {
   milestone_issue_df |>
+    dplyr::arrange(dplyr::desc(milestone_number), dplyr::desc(number)) |>
     dplyr::transmute(
       open_disp = dplyr::if_else(open, "", " (closed)"),
       disp = glue::glue(

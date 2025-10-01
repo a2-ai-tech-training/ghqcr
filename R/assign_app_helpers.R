@@ -151,12 +151,16 @@ create_file_preview <- function(input, file_name, working_dir) {
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              "File Preview",
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              "File Preview",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -195,12 +199,16 @@ create_checklist_preview <- function(
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              glue::glue("{capitalize(checklist_display_name)} Preview"),
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              glue::glue("{capitalize(checklist_display_name)} Preview"),
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -316,12 +324,16 @@ create_qc_issues <- function(
   modal_dialog <- if (inherits(res, "extendr_error")) {
     shiny::modalDialog(
       title = shiny::tags$div(
-        shiny::tags$span(
-          "Issue Creation Failed",
-          style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        shiny::tags$div(
+          shiny::modalButton("Return"),
+          style = "flex: 0 0 auto;"
         ),
-        shiny::modalButton("Dismiss"),
-        style = "text-align: right;"
+        shiny::tags$div(
+          "Issue Creation Failed",
+          style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+        ),
+        shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
       ),
       footer = NULL,
       easyClose = TRUE,
@@ -330,12 +342,16 @@ create_qc_issues <- function(
   } else {
     shiny::modalDialog(
       title = shiny::tags$div(
-        shiny::tags$span(
-          "QC Assigned",
-          style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        shiny::tags$div(
+          shiny::modalButton("Return"),
+          style = "flex: 0 0 auto;"
         ),
-        shiny::modalButton("Dismiss"),
-        style = "text-align: right;"
+        shiny::tags$div(
+          "QC Assigned",
+          style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+        ),
+        shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
       ),
       footer = NULL,
       easyClose = TRUE,

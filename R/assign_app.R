@@ -137,6 +137,7 @@ ghqc_assign_server <- function(
   milestone_df <- purrr::map_dfr(milestones, function(x) {
     tibble::tibble(
       name = x$title,
+      number = x$number,
       open = identical(x$state, "open")
     )
   })
@@ -181,6 +182,7 @@ ghqc_assign_server <- function(
     } else {
       milestone_df |>
         dplyr::filter(open) |>
+        dplyr::arrange(dplyr::desc(number)) |>
         dplyr::pull(name)
     }
 
@@ -362,12 +364,16 @@ ghqc_assign_server <- function(
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              glue::glue("{capitalize(checklist_display_name)} Preview"),
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              glue::glue("{capitalize(checklist_display_name)} Preview"),
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -562,13 +568,19 @@ ghqc_assign_server <- function(
         if (modal_check$state == "warning") {
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
-              shiny::tags$span(
-                "Warning",
-                style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::actionButton(session$ns("return"), "Return"),
+                style = "flex: 0 0 auto;"
               ),
-              shiny::actionButton(session$ns("proceed"), "Proceed Anyway"),
-              shiny::actionButton(session$ns("return"), "Return"),
-              style = "text-align: right;"
+              shiny::tags$div(
+                "Warning",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(
+                shiny::actionButton(session$ns("proceed"), "Proceed Anyway"),
+                style = "flex: 0 0 auto;"
+              )
             ),
             shiny::HTML(modal_check$message),
             footer = NULL,
@@ -577,12 +589,16 @@ ghqc_assign_server <- function(
         } else if (modal_check$state == "error") {
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
-              shiny::tags$span(
-                "Error",
-                style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::actionButton(session$ns("return"), "Return"),
+                style = "flex: 0 0 auto;"
               ),
-              shiny::actionButton(session$ns("return"), "Return"),
-              style = "text-align: right;"
+              shiny::tags$div(
+                "Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
             ),
             shiny::HTML(modal_check$message),
             footer = NULL,
