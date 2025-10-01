@@ -137,6 +137,7 @@ ghqc_assign_server <- function(
   milestone_df <- purrr::map_dfr(milestones, function(x) {
     tibble::tibble(
       name = x$title,
+      number = x$number,
       open = identical(x$state, "open")
     )
   })
@@ -162,7 +163,7 @@ ghqc_assign_server <- function(
     issues_in_milestone_rv <- shiny::reactiveVal(NULL)
 
     # Reactive values for modal flow control
-    proceed_with_warnings <- shiny::reactiveVal(FALSE)
+    ready_to_proceed <- shiny::reactiveVal(FALSE)
 
     # Store current input selections to persist them during UI updates
     input_selections <- shiny::reactiveValues()
@@ -181,6 +182,7 @@ ghqc_assign_server <- function(
     } else {
       milestone_df |>
         dplyr::filter(open) |>
+        dplyr::arrange(dplyr::desc(number)) |>
         dplyr::pull(name)
     }
 
@@ -362,12 +364,16 @@ ghqc_assign_server <- function(
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              glue::glue("{capitalize(checklist_display_name)} Preview"),
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              glue::glue("{capitalize(checklist_display_name)} Preview"),
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -537,11 +543,39 @@ ghqc_assign_server <- function(
     shiny::observeEvent(input$create_qc_items, {
       shiny::req(milestone_input_rv())
 
-      # Reset proceed flag
-      proceed_with_warnings(FALSE)
+      # Reset ready flag and trigger git status check
+      ready_to_proceed(FALSE)
 
       # Check git status for selected files
-      git_statuses <- file_git_status_extr(selected_files(), working_dir)
+      git_statuses <- tryCatch(
+        {
+          file_git_status_extr(selected_files(), working_dir)
+        },
+        error = function(e) {
+          shiny::showModal(shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::actionButton(session$ns("return"), "Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Git Status Error",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+            ),
+            glue::glue("Could not check git status for files: {e$message}"),
+            footer = NULL,
+            easyClose = TRUE
+          ))
+          return(NULL)
+        }
+      )
+
+      if (is.null(git_statuses)) {
+        return()
+      }
 
       # Check for duplicate issues in milestone
       existing_issues <- issues_in_milestone_rv()
@@ -556,60 +590,86 @@ ghqc_assign_server <- function(
         character(0)
       }
 
-      modal_check <- assign_modal_check(git_statuses, duplicate_files)
+      # Check for git issues using the modal check function
+      modal_check <- git_issue_modal_check(git_statuses, duplicate_files)
 
       if (!is.null(modal_check$message)) {
-        if (modal_check$state == "warning") {
-          shiny::showModal(shiny::modalDialog(
-            title = shiny::tags$div(
-              shiny::tags$span(
-                "Warning",
-                style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
-              ),
-              shiny::actionButton(session$ns("proceed"), "Proceed Anyway"),
-              shiny::actionButton(session$ns("return"), "Return"),
-              style = "text-align: right;"
-            ),
-            shiny::HTML(modal_check$message),
-            footer = NULL,
-            easyClose = TRUE
-          ))
-        } else if (modal_check$state == "error") {
-          shiny::showModal(shiny::modalDialog(
-            title = shiny::tags$div(
-              shiny::tags$span(
-                "Error",
-                style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
-              ),
-              shiny::actionButton(session$ns("return"), "Return"),
-              style = "text-align: right;"
-            ),
-            shiny::HTML(modal_check$message),
-            footer = NULL,
-            easyClose = TRUE
-          ))
+        # Show modal with git status warnings/errors
+        modal_title_text <- if (modal_check$state == "error") {
+          "Git Issues Found - Cannot Proceed"
+        } else {
+          "Git Status Warning"
         }
+
+        # Create title with appropriate buttons
+        modal_title <- if (modal_check$state == "error") {
+          # Error state: only Return button on left
+          shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::actionButton(session$ns("return"), "Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              modal_title_text,
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+          )
+        } else {
+          # Warning state: Return on left, Proceed Anyway on right
+          shiny::tags$div(
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::actionButton(session$ns("return"), "Return"),
+              style = "flex: 0 0 auto;"
+            ),
+            shiny::tags$div(
+              modal_title_text,
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(
+              shiny::actionButton(session$ns("proceed"), "Proceed Anyway"),
+              style = "flex: 0 0 auto;"
+            )
+          )
+        }
+
+        shiny::showModal(shiny::modalDialog(
+          title = modal_title,
+          shiny::HTML(modal_check$message),
+          footer = NULL,
+          easyClose = modal_check$state != "error"
+        ))
+
         return()
       }
 
-      # If no issues, proceed directly to create issues
-      create_qc_issues(
-        milestone_name = milestone_input_rv(),
-        selected_files = selected_files(),
-        checklists = checklists,
-        repo_users = repo_users,
-        milestones = milestones,
-        prepended_checklist_note = prepended_checklist_note,
-        working_dir = working_dir,
-        input = input,
-        session = session
-      )
+      # If we get here, git status is clean - proceed to issue creation
+      ready_to_proceed(TRUE)
     })
 
     # Handle "Proceed Anyway" button click
     shiny::observeEvent(input$proceed, {
       shiny::removeModal()
-      proceed_with_warnings(TRUE)
+      ready_to_proceed(TRUE)
+    })
+
+    # Handle "Return" button click
+    shiny::observeEvent(input$return, {
+      shiny::removeModal()
+      ready_to_proceed(FALSE)
+    })
+
+    # Create issues when ready to proceed
+    shiny::observeEvent(ready_to_proceed(), {
+      shiny::req(ready_to_proceed() == TRUE)
+      shiny::req(milestone_input_rv())
+
+      # Reset the reactive val
+      ready_to_proceed(FALSE)
+
+      # Create the QC issues
       create_qc_issues(
         milestone_name = milestone_input_rv(),
         selected_files = selected_files(),
@@ -621,12 +681,6 @@ ghqc_assign_server <- function(
         input = input,
         session = session
       )
-    })
-
-    # Handle "Return" button click
-    shiny::observeEvent(input$return, {
-      shiny::removeModal()
-      proceed_with_warnings(FALSE)
     })
 
     shiny::observe({

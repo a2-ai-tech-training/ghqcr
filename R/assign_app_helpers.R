@@ -151,12 +151,16 @@ create_file_preview <- function(input, file_name, working_dir) {
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              "File Preview",
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              "File Preview",
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -195,12 +199,16 @@ create_checklist_preview <- function(
       shiny::showModal(
         shiny::modalDialog(
           title = shiny::tags$div(
-            shiny::tags$span(
-              glue::glue("{capitalize(checklist_display_name)} Preview"),
-              style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+            shiny::tags$div(
+              shiny::modalButton("Return"),
+              style = "flex: 0 0 auto;"
             ),
-            shiny::modalButton("Dismiss"),
-            style = "text-align: right;"
+            shiny::tags$div(
+              glue::glue("{capitalize(checklist_display_name)} Preview"),
+              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+            ),
+            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
           ),
           footer = NULL,
           easyClose = TRUE,
@@ -272,118 +280,6 @@ extract_file_data <- function(input, selected_files, checklists, repo_users) {
   file_data
 }
 
-assign_modal_check <- function(git_statuses, duplicate_files = character(0)) {
-  # Check for duplicate issues
-  has_duplicates <- length(duplicate_files) > 0
-
-  # Check git status states
-  has_errors <- any(!is.na(git_statuses$error_message))
-  has_untracked <- any(!git_statuses$is_git_tracked, na.rm = TRUE)
-  has_dirty <- any(git_statuses$git_status %in% "Local changes", na.rm = TRUE)
-  has_blocking <- any(
-    git_statuses$git_status %in%
-      c("Ahead", "Behind", "Diverged", "Local commits", "Remote changes"),
-    na.rm = TRUE
-  )
-
-  # If clean (up to date) and no duplicates, return NULL (no modal needed)
-  if (
-    !has_duplicates &&
-      !has_errors &&
-      !has_untracked &&
-      !has_dirty &&
-      !has_blocking
-  ) {
-    return(list(message = NULL, state = NULL))
-  }
-
-  # Build message with markdown headers
-  messages <- c()
-
-  # Add duplicate files section first (most critical)
-  if (has_duplicates) {
-    messages <- c(
-      messages,
-      "## ❌ Duplicate Issues",
-      paste(
-        "- **",
-        duplicate_files,
-        "**: Already exists as an issue in this milestone",
-        sep = ""
-      )
-    )
-  }
-
-  if (has_errors) {
-    error_files <- git_statuses[!is.na(git_statuses$error_message), ]
-    messages <- c(
-      messages,
-      "## ❌ Git Errors",
-      paste(
-        "- **",
-        error_files$file_path,
-        "**: ",
-        error_files$error_message,
-        sep = ""
-      )
-    )
-  }
-
-  if (has_blocking) {
-    blocking_files <- git_statuses[
-      git_statuses$git_status %in%
-        c("Ahead", "Behind", "Diverged", "Local commits", "Remote changes"),
-    ]
-    messages <- c(
-      messages,
-      "## 🚫 Sync Issues",
-      paste(
-        "- **",
-        blocking_files$file_path,
-        "**: ",
-        blocking_files$git_status,
-        sep = ""
-      )
-    )
-  }
-
-  if (has_dirty) {
-    dirty_files <- git_statuses[git_statuses$git_status %in% "Local changes", ]
-    messages <- c(
-      messages,
-      "## ⚠️ Local Changes",
-      paste("- **", dirty_files$file_path, "**: Uncommitted changes", sep = "")
-    )
-  }
-
-  if (has_untracked) {
-    untracked_files <- git_statuses[!git_statuses$is_git_tracked, ]
-    messages <- c(
-      messages,
-      "## 📝 Untracked Files",
-      paste(
-        "- **",
-        untracked_files$file_path,
-        "**: Not tracked by Git",
-        sep = ""
-      )
-    )
-  }
-
-  # Determine state: error (blocking) or warning (can proceed)
-  # Duplicates are always blocking errors
-  state <- if (has_duplicates || has_errors || has_blocking || has_untracked) {
-    "error"
-  } else {
-    "warning"
-  }
-
-  # Convert to HTML
-  message_html <- markdown_to_html_extr(paste(messages, collapse = "\n\n"))
-
-  return(list(message = message_html, state = state))
-}
-
 create_qc_issues <- function(
   milestone_name,
   selected_files,
@@ -428,12 +324,16 @@ create_qc_issues <- function(
   modal_dialog <- if (inherits(res, "extendr_error")) {
     shiny::modalDialog(
       title = shiny::tags$div(
-        shiny::tags$span(
-          "Issue Creation Failed",
-          style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        shiny::tags$div(
+          shiny::modalButton("Return"),
+          style = "flex: 0 0 auto;"
         ),
-        shiny::modalButton("Dismiss"),
-        style = "text-align: right;"
+        shiny::tags$div(
+          "Issue Creation Failed",
+          style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+        ),
+        shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
       ),
       footer = NULL,
       easyClose = TRUE,
@@ -442,12 +342,16 @@ create_qc_issues <- function(
   } else {
     shiny::modalDialog(
       title = shiny::tags$div(
-        shiny::tags$span(
-          "QC Assigned",
-          style = "float: left; font-weight: bold; font-size: 20px; margin-top: 5px;"
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        shiny::tags$div(
+          shiny::modalButton("Return"),
+          style = "flex: 0 0 auto;"
         ),
-        shiny::modalButton("Dismiss"),
-        style = "text-align: right;"
+        shiny::tags$div(
+          "QC Assigned",
+          style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+        ),
+        shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
       ),
       footer = NULL,
       easyClose = TRUE,

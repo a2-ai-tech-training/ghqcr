@@ -14,9 +14,12 @@ use crate::{
         configuration_status_impl, determine_config_dir_from_null, format_checklist_as_html_impl,
         get_checklists_impl, get_configuration_impl, setup_configuration_impl,
     },
-    create::{create_issues_impl, file_git_status_impl},
-    git_utils::{get_issue_commits_impl, get_milestone_issues_impl, get_milestones_impl, get_users_impl},
-    notify::get_multiple_milestone_issues_impl,
+    create::create_issues_impl,
+    git_utils::{
+        file_git_status_impl, get_issue_commits_impl, get_milestone_issues_impl,
+        get_milestones_impl, get_users_impl,
+    },
+    notify::{create_qc_comment_impl, get_multiple_milestone_issues_impl, get_qc_comment_body_html_impl, post_qc_comment_impl},
     utils::{get_cached_git_info, get_disk_cache},
 };
 
@@ -194,6 +197,35 @@ pub fn get_issue_commits_extr(issue: Robj, working_dir: &str) -> Result<Robj> {
     }
 }
 
+#[extendr]
+pub fn create_qc_comment_extr(
+    issue: Robj,
+    filename: &str,
+    from_commit: &str,
+    to_commit: &str,
+    message: Nullable<String>,
+    show_diff: bool,
+) -> Result<Robj> {
+    let message: Option<String> = message.into();
+    let qc_comment_robj = create_qc_comment_impl(&issue, filename, from_commit, to_commit, message, show_diff)?;
+    Ok(qc_comment_robj)
+}
+
+#[extendr]
+pub fn get_qc_comment_body_html_extr(qc_comment: Robj, working_dir: &str) -> Result<String> {
+    let git_info = get_cached_git_info(working_dir)?;
+    let html_body = get_qc_comment_body_html_impl(&qc_comment, git_info.as_ref())?;
+    Ok(html_body)
+}
+
+/// Post a QC comment to GitHub
+#[extendr]
+pub fn post_qc_comment_extr(qc_comment: Robj, working_dir: &str) -> Result<String> {
+    let git_info = get_cached_git_info(working_dir)?;
+    let result = post_qc_comment_impl(&qc_comment, git_info.as_ref())?;
+    Ok(result)
+}
+
 // Macro to generate exports.
 // This ensures exported functions are registered with R.
 // See corresponding C code in `entrypoint.c`.
@@ -217,4 +249,7 @@ extendr_module! {
     fn markdown_to_html_extr;
     fn get_multiple_milestone_issues_extr;
     fn get_issue_commits_extr;
+    fn create_qc_comment_extr;
+    fn get_qc_comment_body_html_extr;
+    fn post_qc_comment_extr;
 }
