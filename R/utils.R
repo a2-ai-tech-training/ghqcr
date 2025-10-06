@@ -38,13 +38,13 @@ safe_id_to_char <- function(id) {
 
 #' Get milestones with ID fix applied
 #'
-#' Wrapper around get_milestones_extr that automatically fixes floating
+#' Wrapper around get_milestones_impl that automatically fixes floating
 #' point ID serialization issues by converting IDs to character strings.
 #'
 #' @param working_dir Working directory path
 #' @return List of milestones with fixed IDs
 get_milestones <- function(working_dir) {
-  milestones <- .catch(get_milestones_extr(working_dir))
+  milestones <- .catch(get_milestones_impl(working_dir))
 
   # Convert all floating point values to character strings to prevent serialization issues
   lapply(milestones, function(milestone) {
@@ -112,16 +112,16 @@ fix_issue_ids <- function(issue) {
 
 #' Get multiple milestone issues with ID fix applied
 #'
-#' Wrapper around get_multiple_milestone_issues_extr that automatically fixes floating
+#' Wrapper around get_multiple_milestone_issues_impl that automatically fixes floating
 #' point ID serialization issues by converting IDs to character strings.
 #'
 #' @param milestones List of milestone objects
 #' @param working_dir Working directory path
 #' @return Named list of milestone issues with fixed IDs
 get_multiple_milestone_issues <- function(milestones, working_dir) {
-  multiple_milestone_issues <- .catch(get_multiple_milestone_issues_extr(
-    milestones,
-    working_dir
+  multiple_milestone_issues <- .catch(get_multiple_milestone_issues_impl(
+    working_dir,
+    milestones
   ))
 
   # Fix floating point ID serialization issues for all issues
@@ -240,7 +240,7 @@ git_issue_modal_check <- function(
   }
 
   # Convert to HTML
-  message_html <- markdown_to_html_extr(paste(messages, collapse = "\n\n"))
+  message_html <- markdown_to_html_impl(paste(messages, collapse = "\n\n"))
 
   return(list(message = message_html, state = state))
 }

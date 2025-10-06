@@ -1,12 +1,20 @@
 use extendr_api::{deserializer::from_robj, prelude::*, Robj};
 use ghqctoolkit::{
-    create_labels_if_needed, Checklist, DiskCache, GitFileOps, GitHubReader, GitHubWriter,
-    GitRepository, QCIssue,
+    create_labels_if_needed, Checklist, GitFileOps, GitHubWriter, GitRepository, QCIssue,
 };
 use octocrab::models::Milestone;
 use serde::Deserialize;
 
-use crate::{configuration::RChecklist, git_utils::RRepoUser, utils::get_rt};
+use crate::{
+    configuration::RChecklist,
+    git_utils::RRepoUser,
+    utils::{get_cached_git_info, get_disk_cache, get_rt},
+};
+
+extendr_module! {
+    mod create;
+    fn create_issues_impl;
+}
 
 #[derive(Debug, Deserialize)]
 struct RFileData {
@@ -15,15 +23,19 @@ struct RFileData {
     checklist: RChecklist,
 }
 
-pub fn create_issues_impl(
+#[extendr]
+fn create_issues_impl(
     milestone_name: &str,
     description: Nullable<String>,
     file_data_robj: Robj,
     milestones_robj: Robj,
     prepended_checklist_note: Nullable<String>,
-    git_info: &(impl GitHubWriter + GitHubReader + GitFileOps + GitRepository),
-    cache: Option<&DiskCache>,
+    working_dir: &str,
 ) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+    let cache = get_disk_cache(git_info);
+
     let rt = get_rt();
 
     // Deserialize milestones
@@ -40,7 +52,7 @@ pub fn create_issues_impl(
         (m.number as u64, m.html_url.to_string())
     } else {
         if let Err(e) = rt.block_on(create_labels_if_needed(
-            cache,
+            cache.as_ref(),
             git_info.branch().ok().as_ref().map(|s| s.as_str()),
             git_info,
         )) {

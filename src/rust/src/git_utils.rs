@@ -2,15 +2,28 @@ use std::path::Path;
 
 use extendr_api::{deserializer::from_robj, prelude::*, serializer::to_robj, Robj};
 use ghqctoolkit::{
-    find_file_commits, get_repo_users, DiskCache, GitCommitAnalysis, GitFileOps, GitHubReader,
-    GitRepository, GitStatusOps, IssueCommit, IssueThread,
+    find_file_commits, get_repo_users, GitFileOps, GitHubReader, GitRepository, GitStatusOps,
+    IssueCommit, IssueThread,
 };
 use octocrab::models::issues::Issue;
 use serde::Deserialize;
 
-use crate::utils::get_rt;
+use crate::utils::{get_cached_git_info, get_disk_cache, get_rt};
 
-pub fn get_milestones_impl(git_info: &impl GitHubReader) -> Result<Vec<Robj>> {
+extendr_module! {
+    mod git_utils;
+    fn get_milestones_impl;
+    fn get_milestone_issues_impl;
+    fn get_users_impl;
+    fn get_issue_commits_impl;
+    fn file_git_status_impl;
+}
+
+#[extendr]
+fn get_milestones_impl(working_dir: &str) -> Result<Vec<Robj>> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
     let rt = get_rt();
     let milestones = rt
         .block_on(git_info.get_milestones())
@@ -18,11 +31,11 @@ pub fn get_milestones_impl(git_info: &impl GitHubReader) -> Result<Vec<Robj>> {
     milestones.iter().map(to_robj).collect::<Result<Vec<_>>>()
 }
 
-pub fn get_milestone_issues_impl(
-    git_info: &impl GitHubReader,
-    milestone: &Robj,
-) -> Result<Vec<Robj>> {
-    let milestone = from_robj(milestone)?;
+#[extendr]
+fn get_milestone_issues_impl(working_dir: &str, milestone: Robj) -> Result<Vec<Robj>> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+    let milestone = from_robj(&milestone)?;
     let rt = get_rt();
     let issues = rt
         .block_on(git_info.get_milestone_issues(&milestone))
@@ -42,12 +55,18 @@ pub struct RRepoUser {
     pub name: Option<String>,
 }
 
-pub fn get_users_impl(
-    git_info: &(impl GitHubReader + GitRepository),
-    cache: Option<&DiskCache>,
-) -> Robj {
+#[extendr]
+fn get_users_impl(working_dir: &str) -> Robj {
+    let Ok(cached_git_info) = get_cached_git_info(working_dir) else {
+        log::debug!("Could not initialize git repository for {working_dir} to determine repo users. Defaulting to none...");
+        return Robj::default();
+    };
+
+    let git_info = cached_git_info.as_ref();
+    let cache = get_disk_cache(git_info);
+
     let rt = get_rt();
-    let repo_users = match rt.block_on(get_repo_users(cache, git_info)) {
+    let repo_users = match rt.block_on(get_repo_users(cache.as_ref(), git_info)) {
         Ok(repo_users) => repo_users,
         Err(e) => {
             log::warn!("Could not determine repo users: {e}. Defaulting to none...");
@@ -73,19 +92,23 @@ pub fn get_users_impl(
 }
 
 #[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
-pub struct RFileGitStatus {
-    pub file_path: String,
-    pub is_git_tracked: bool,
-    pub has_commits: bool,
-    pub git_status: Option<String>,
-    pub commit_hash: Option<String>,
-    pub error_message: Option<String>,
+struct RFileGitStatus {
+    file_path: String,
+    is_git_tracked: bool,
+    has_commits: bool,
+    git_status: Option<String>,
+    commit_hash: Option<String>,
+    error_message: Option<String>,
 }
 
-pub fn file_git_status_impl(
+#[extendr]
+fn file_git_status_impl(
     files: Vec<String>,
-    git_info: &(impl GitFileOps + GitRepository + GitStatusOps),
-) -> Result<Vec<RFileGitStatus>> {
+    working_dir: &str,
+) -> Result<Dataframe<RFileGitStatus>> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
     let mut results = Vec::new();
 
     // Get git status once for efficiency
@@ -145,15 +168,17 @@ pub fn file_git_status_impl(
         results.push(result);
     }
 
-    Ok(results)
+    results
+        .into_dataframe()
+        .map_err(|e| Error::Other(format!("Failed to create dataframe: {}", e)))
 }
 
 #[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
-pub struct RIssueCommit {
-    pub hash: String,
-    pub message: String,
-    pub qc_class: String, // Will convert QCClass to String for R compatibility
-    pub edits_file: bool,
+struct RIssueCommit {
+    hash: String,
+    message: String,
+    qc_class: String, // Will convert QCClass to String for R compatibility
+    edits_file: bool,
 }
 
 impl From<IssueCommit> for RIssueCommit {
@@ -167,19 +192,20 @@ impl From<IssueCommit> for RIssueCommit {
     }
 }
 
-pub fn get_issue_commits_impl(
-    git_info: &(impl GitFileOps + GitRepository + GitHubReader + GitCommitAnalysis),
-    cache: Option<&DiskCache>,
-    issue_robj: &Robj,
-) -> Result<Vec<RIssueCommit>> {
+#[extendr]
+fn get_issue_commits_impl(working_dir: &str, issue_robj: Robj) -> Result<Dataframe<RIssueCommit>> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+    let cache = get_disk_cache(git_info);
+
     let rt = get_rt();
 
     // Deserialize the issue from R
-    let issue: Issue = from_robj(issue_robj)?;
+    let issue: Issue = from_robj(&issue_robj)?;
 
     // Create IssueThread from the issue
     let issue_thread = rt
-        .block_on(IssueThread::from_issue(&issue, cache, git_info))
+        .block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info))
         .map_err(|e| Error::Other(format!("Failed to create issue thread: {e}")))?;
     let r_commits = issue_thread
         .commits
@@ -187,5 +213,7 @@ pub fn get_issue_commits_impl(
         .map(RIssueCommit::from)
         .collect::<Vec<_>>();
 
-    Ok(r_commits)
+    r_commits
+        .into_dataframe()
+        .map_err(|e| Error::Other(format!("Failed to create dataframe: {}", e)))
 }

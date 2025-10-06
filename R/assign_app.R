@@ -5,18 +5,18 @@ ghqc_assign_app <- function(
   tryCatch(
     {
       .le$debug("Loading configuration...")
-      configuration <- .catch(get_configuration_extr(config_dir))
-      checklists <- .catch(get_checklists_extr(configuration)) |>
+      configuration <- .catch(get_configuration_impl(config_dir))
+      checklists <- .catch(get_checklists_impl(configuration)) |>
         dplyr::arrange(name, name == "Custom")
-      checklist_display_name <- get_checklist_display_name_extr(
+      checklist_display_name <- get_checklist_display_name_impl(
         configuration
       )
-      prepended_checklist_note <- get_prepended_checklist_note_extr(
+      prepended_checklist_note <- get_prepended_checklist_note_impl(
         configuration
       )
 
       .le$debug("Getting Repo Users...")
-      repo_users <- .catch(get_repo_users_extr(working_dir))
+      repo_users <- .catch(get_users_impl(working_dir))
     },
     error = function(e) {
       stop("Failed to load data: ", conditionMessage(e))
@@ -222,7 +222,7 @@ ghqc_assign_server <- function(
         milestone_index <- which(milestone_df$name == input$existing_milestone)
         if (length(milestone_index) > 0) {
           milestone <- milestones[[milestone_index[1]]]
-          issues <- .catch(get_milestone_issues_extr(working_dir, milestone))
+          issues <- .catch(get_milestone_issues_impl(working_dir, milestone))
           issues_files <- sapply(issues, function(issue) {
             file.path(basename(working_dir), issue$title)
           })
@@ -330,7 +330,7 @@ ghqc_assign_server <- function(
           "Milestone {milestone_input_rv()} exists. Fetching issues..."
         ))
 
-        issues <- .catch(get_milestone_issues_extr(working_dir, milestone))
+        issues <- .catch(get_milestone_issues_impl(working_dir, milestone))
 
         issues_in_milestone_rv(issues)
 
@@ -396,7 +396,7 @@ ghqc_assign_server <- function(
         "{capitalize(checklist_display_name)} selected for review: {input$checklist_name}"
       ))
       checklist <- checklists[checklists$name == input$checklist_name, ]
-      shiny::HTML(.catch(format_checklist_as_html_extr(checklist)))
+      shiny::HTML(.catch(format_checklist_as_html_impl(checklist)))
     })
 
     # Select Files Rows
@@ -549,7 +549,7 @@ ghqc_assign_server <- function(
       # Check git status for selected files
       git_statuses <- tryCatch(
         {
-          file_git_status_extr(selected_files(), working_dir)
+          file_git_status_impl(selected_files(), working_dir)
         },
         error = function(e) {
           shiny::showModal(shiny::modalDialog(

@@ -179,7 +179,6 @@ ghqc_notify_server <- function(id, working_dir) {
     loaded_milestone_issues(initial_milestone_issues)
     loaded_milestone_names(names(initial_milestone_issues))
 
-
     reset_triggered <- shiny::reactiveVal(FALSE)
     session$onSessionEnded(function() {
       if (!isTRUE(shiny::isolate(reset_triggered()))) {
@@ -219,7 +218,6 @@ ghqc_notify_server <- function(id, working_dir) {
       missing_names <- setdiff(needed_milestone_names, current_loaded)
 
       if (length(missing_names) > 0) {
-
         # Find the milestone objects for the missing ones
         missing_milestones <- milestones[sapply(milestones, function(m) {
           m$title %in% missing_names
@@ -285,7 +283,9 @@ ghqc_notify_server <- function(id, working_dir) {
 
       # Preserve current selection if it's still valid
       new_choices <- c("All Issues", milestone_names)
-      selected_value <- if (!is.null(current_selection) && current_selection %in% new_choices) {
+      selected_value <- if (
+        !is.null(current_selection) && current_selection %in% new_choices
+      ) {
         current_selection
       } else {
         NULL # Let Shiny handle default selection
@@ -301,7 +301,6 @@ ghqc_notify_server <- function(id, working_dir) {
 
     # Handle Include Closed Milestones checkbox - load missing milestones if "All Issues" is selected
     shiny::observeEvent(input$include_closed_milestones, {
-
       if (
         !is.null(input$select_milestone) &&
           input$select_milestone == "All Issues"
@@ -347,7 +346,10 @@ ghqc_notify_server <- function(id, working_dir) {
         # Preserve current issue selection if it's still valid
         current_issue_selection <- input$select_issue
         new_issue_choices <- milestone_issue_df |> format_issues()
-        selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+        selected_issue_value <- if (
+          !is.null(current_issue_selection) &&
+            current_issue_selection %in% new_issue_choices
+        ) {
           current_issue_selection
         } else {
           NULL # Let Shiny handle default selection
@@ -391,7 +393,10 @@ ghqc_notify_server <- function(id, working_dir) {
       # Preserve current issue selection if it's still valid
       current_issue_selection <- input$select_issue
       new_issue_choices <- issue_choices |> format_issues()
-      selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+      selected_issue_value <- if (
+        !is.null(current_issue_selection) &&
+          current_issue_selection %in% new_issue_choices
+      ) {
         current_issue_selection
       } else {
         NULL # Let Shiny handle default selection
@@ -429,7 +434,10 @@ ghqc_notify_server <- function(id, working_dir) {
         # Preserve current issue selection if it's still valid
         current_issue_selection <- input$select_issue
         new_issue_choices <- issue_choices |> format_issues()
-        selected_issue_value <- if (!is.null(current_issue_selection) && current_issue_selection %in% new_issue_choices) {
+        selected_issue_value <- if (
+          !is.null(current_issue_selection) &&
+            current_issue_selection %in% new_issue_choices
+        ) {
           current_issue_selection
         } else {
           NULL # Let Shiny handle default selection
@@ -507,7 +515,7 @@ ghqc_notify_server <- function(id, working_dir) {
       # Get commits for this issue
       issue_commits <- tryCatch(
         {
-          .catch(get_issue_commits_extr(selected_issue, working_dir))
+          .catch(get_issue_commits_impl(working_dir, selected_issue))
         },
         error = function(e) {
           .le$debug(glue::glue("Error getting issue commits: {e$message}"))
@@ -687,7 +695,7 @@ ghqc_notify_server <- function(id, working_dir) {
       # Get git status for the file
       git_status_result <- tryCatch(
         {
-          .catch(file_git_status_extr(c(filename), working_dir))
+          .catch(file_git_status_impl(c(filename), working_dir))
         },
         error = function(e) {
           .le$debug(glue::glue("Error getting git status: {e$message}"))
@@ -955,7 +963,7 @@ ghqc_notify_server <- function(id, working_dir) {
             ))
           }
 
-          qc_comment <- .catch(create_qc_comment_extr(
+          qc_comment <- .catch(create_qc_comment_impl(
             fix_issue_ids(selected_issue),
             filename,
             from_commit,
@@ -1000,7 +1008,7 @@ ghqc_notify_server <- function(id, working_dir) {
       # Get HTML body from QC comment
       comment_html <- tryCatch(
         {
-          .catch(get_qc_comment_body_html_extr(qc_comment, working_dir))
+          .catch(get_qc_comment_body_html_impl(qc_comment, working_dir))
         },
         error = function(e) {
           .le$debug(glue::glue("Error getting QC comment body: {e$message}"))
@@ -1091,7 +1099,7 @@ ghqc_notify_server <- function(id, working_dir) {
       # Post the comment
       post_result <- tryCatch(
         {
-          .catch(post_qc_comment_extr(qc_comment, working_dir))
+          .catch(post_qc_comment_impl(qc_comment, working_dir))
         },
         error = function(e) {
           .le$debug(glue::glue("Error posting QC comment: {e$message}"))
@@ -1133,7 +1141,7 @@ ghqc_notify_server <- function(id, working_dir) {
           ),
           shiny::div(
             shiny::p("QC comment posted successfully!"),
-            shiny::HTML(markdown_to_html_extr(glue::glue(
+            shiny::HTML(markdown_to_html_impl(glue::glue(
               "[Click here to view comment on GitHub]({post_result})"
             )))
           ),
@@ -1164,14 +1172,23 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
     function(milestone_issues, milestone_name) {
       purrr::map_dfr(milestone_issues, function(issue) {
         # Extract milestone number from the issue's milestone object
-        milestone_number <- if (!is.null(issue$milestone) && !is.null(issue$milestone$number)) {
+        milestone_number <- if (
+          !is.null(issue$milestone) && !is.null(issue$milestone$number)
+        ) {
           issue$milestone$number
         } else {
           # Fallback: extract number from milestone name if it follows a pattern
           # This handles cases where milestone name is like "v1.0", "Release 2.1", etc.
-          milestone_name_pattern <- stringr::str_extract(milestone_name, "\\d+(\\.\\d+)*")
+          milestone_name_pattern <- stringr::str_implact(
+            milestone_name,
+            "\\d+(\\.\\d+)*"
+          )
           if (!is.na(milestone_name_pattern)) {
-            as.numeric(stringr::str_replace_all(milestone_name_pattern, "\\.", ""))
+            as.numeric(stringr::str_replace_all(
+              milestone_name_pattern,
+              "\\.",
+              ""
+            ))
           } else {
             0 # Default fallback
           }
