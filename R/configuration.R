@@ -13,12 +13,12 @@ ghqc_config_setup <- function(config_url = NULL, config_path = NULL) {
     config_url
   }
 
-  val <- .catch(setup_configuration_extr(config_path, config_url))
+  val <- .catch(setup_configuration_impl(config_path, config_url))
 
   cli::cli_alert_success(val)
 }
 
 ghqc_config_status <- function(config_path = NULL) {
-  val <- .catch(configuration_status_extr(config_path))
+  val <- .catch(configuration_status_impl(config_path))
   message(val)
 }

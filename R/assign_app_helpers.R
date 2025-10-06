@@ -141,7 +141,7 @@ create_file_preview <- function(input, file_name, working_dir) {
   shiny::observeEvent(
     input[[id]],
     {
-      content <- read_to_string_extr(file.path(working_dir, file_name))
+      content <- read_to_string_impl(file.path(working_dir, file_name))
       preview <- if (is.null(content)) {
         shiny::div("File preview not available")
       } else {
@@ -186,7 +186,7 @@ create_checklist_preview <- function(
     {
       selected_checklist <- input[[checklist_input_id]]
       content <- if (selected_checklist %in% checklists$name) {
-        checklist_content <- format_checklist_as_html_extr(checklists[
+        checklist_content <- format_checklist_as_html_impl(checklists[
           checklists$name == selected_checklist,
         ])
         shiny::HTML(checklist_content)
@@ -310,7 +310,7 @@ create_qc_issues <- function(
     repo_users
   )
 
-  res <- create_issues_extr(
+  res <- create_issues_impl(
     milestone_name,
     input$milestone_description,
     file_data,
@@ -337,7 +337,7 @@ create_qc_issues <- function(
       ),
       footer = NULL,
       easyClose = TRUE,
-      shiny::HTML(markdown_to_html_extr(res$value))
+      shiny::HTML(markdown_to_html_impl(res$value))
     )
   } else {
     shiny::modalDialog(
@@ -355,7 +355,7 @@ create_qc_issues <- function(
       ),
       footer = NULL,
       easyClose = TRUE,
-      shiny::HTML(markdown_to_html_extr(res))
+      shiny::HTML(markdown_to_html_impl(res))
     )
   }
 

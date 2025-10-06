@@ -15,6 +15,6 @@ get_multiple_milestone_issues(milestones, working_dir)
 Named list of milestone issues with fixed IDs
 }
 \description{
-Wrapper around get_multiple_milestone_issues_extr that automatically fixes floating
+Wrapper around get_multiple_milestone_issues_impl that automatically fixes floating
 point ID serialization issues by converting IDs to character strings.
 }

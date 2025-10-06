@@ -13,6 +13,6 @@ get_milestones(working_dir)
 List of milestones with fixed IDs
 }
 \description{
-Wrapper around get_milestones_extr that automatically fixes floating
+Wrapper around get_milestones_impl that automatically fixes floating
 point ID serialization issues by converting IDs to character strings.
 }

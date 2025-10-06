@@ -10,48 +10,47 @@
 #' @useDynLib ghqcr, .registration = TRUE
 NULL
 
-setup_configuration_extr <- function(config_dir, git) .Call(wrap__setup_configuration_extr, config_dir, git)
+init_logger_impl <- function() invisible(.Call(wrap__init_logger_impl))
 
-configuration_status_extr <- function(config_dir) .Call(wrap__configuration_status_extr, config_dir)
+log_message_impl <- function(level, msg) invisible(.Call(wrap__log_message_impl, level, msg))
 
-get_configuration_extr <- function(config_dir) .Call(wrap__get_configuration_extr, config_dir)
+read_to_string_impl <- function(path) .Call(wrap__read_to_string_impl, path)
 
-get_checklist_display_name_extr <- function(configuration) .Call(wrap__get_checklist_display_name_extr, configuration)
+markdown_to_html_impl <- function(content) .Call(wrap__markdown_to_html_impl, content)
 
-get_prepended_checklist_note_extr <- function(configuration) .Call(wrap__get_prepended_checklist_note_extr, configuration)
+get_multiple_milestone_issues_impl <- function(working_dir, milestones_robj) .Call(wrap__get_multiple_milestone_issues_impl, working_dir, milestones_robj)
 
-get_checklists_extr <- function(configuration) .Call(wrap__get_checklists_extr, configuration)
+create_qc_comment_impl <- function(issue_robj, filename, from_commit, to_commit, message, show_diff) .Call(wrap__create_qc_comment_impl, issue_robj, filename, from_commit, to_commit, message, show_diff)
 
-get_milestones_extr <- function(working_dir) .Call(wrap__get_milestones_extr, working_dir)
+get_qc_comment_body_html_impl <- function(r_qc_comment_robj, working_dir) .Call(wrap__get_qc_comment_body_html_impl, r_qc_comment_robj, working_dir)
 
-get_milestone_issues_extr <- function(working_dir, milestone) .Call(wrap__get_milestone_issues_extr, working_dir, milestone)
+post_qc_comment_impl <- function(r_qc_comment_robj, working_dir) .Call(wrap__post_qc_comment_impl, r_qc_comment_robj, working_dir)
 
-get_repo_users_extr <- function(working_dir) .Call(wrap__get_repo_users_extr, working_dir)
+get_milestones_impl <- function(working_dir) .Call(wrap__get_milestones_impl, working_dir)
 
-create_issues_extr <- function(milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir) .Call(wrap__create_issues_extr, milestone_name, description, file_data, milestones, prepended_checklist_note, working_dir)
+get_milestone_issues_impl <- function(working_dir, milestone) .Call(wrap__get_milestone_issues_impl, working_dir, milestone)
 
-file_git_status_extr <- function(files, working_dir) .Call(wrap__file_git_status_extr, files, working_dir)
+get_users_impl <- function(working_dir) .Call(wrap__get_users_impl, working_dir)
 
-init_logger_extr <- function() invisible(.Call(wrap__init_logger_extr))
+get_issue_commits_impl <- function(working_dir, issue_robj) .Call(wrap__get_issue_commits_impl, working_dir, issue_robj)
 
-log_message_extr <- function(level, msg) invisible(.Call(wrap__log_message_extr, level, msg))
+file_git_status_impl <- function(files, working_dir) .Call(wrap__file_git_status_impl, files, working_dir)
 
-format_checklist_as_html_extr <- function(checklist_robj) .Call(wrap__format_checklist_as_html_extr, checklist_robj)
+create_issues_impl <- function(milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir) .Call(wrap__create_issues_impl, milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir)
 
-read_to_string_extr <- function(path) .Call(wrap__read_to_string_extr, path)
+setup_configuration_impl <- function(config_dir, git) .Call(wrap__setup_configuration_impl, config_dir, git)
 
-markdown_to_html_extr <- function(content) .Call(wrap__markdown_to_html_extr, content)
+configuration_status_impl <- function(config_dir) .Call(wrap__configuration_status_impl, config_dir)
 
-get_multiple_milestone_issues_extr <- function(milestones, working_dir) .Call(wrap__get_multiple_milestone_issues_extr, milestones, working_dir)
+get_configuration_impl <- function(config_dir) .Call(wrap__get_configuration_impl, config_dir)
 
-get_issue_commits_extr <- function(issue, working_dir) .Call(wrap__get_issue_commits_extr, issue, working_dir)
+get_checklists_impl <- function(configuration) .Call(wrap__get_checklists_impl, configuration)
 
-create_qc_comment_extr <- function(issue, filename, from_commit, to_commit, message, show_diff) .Call(wrap__create_qc_comment_extr, issue, filename, from_commit, to_commit, message, show_diff)
+format_checklist_as_html_impl <- function(checklist) .Call(wrap__format_checklist_as_html_impl, checklist)
 
-get_qc_comment_body_html_extr <- function(qc_comment, working_dir) .Call(wrap__get_qc_comment_body_html_extr, qc_comment, working_dir)
+get_checklist_display_name_impl <- function(configuration) .Call(wrap__get_checklist_display_name_impl, configuration)
 
-#' Post a QC comment to GitHub
-post_qc_comment_extr <- function(qc_comment, working_dir) .Call(wrap__post_qc_comment_extr, qc_comment, working_dir)
+get_prepended_checklist_note_impl <- function(configuration) .Call(wrap__get_prepended_checklist_note_impl, configuration)
 
 
 # nolint end
