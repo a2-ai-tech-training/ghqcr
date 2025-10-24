@@ -52,5 +52,13 @@ get_checklist_display_name_impl <- function(configuration) .Call(wrap__get_check
 
 get_prepended_checklist_note_impl <- function(configuration) .Call(wrap__get_prepended_checklist_note_impl, configuration)
 
+get_logo_path_impl <- function(configuration) .Call(wrap__get_logo_path_impl, configuration)
+
+record_issue_modal_check_impl <- function(milestone_issues, checklist_name) .Call(wrap__record_issue_modal_check_impl, milestone_issues, checklist_name)
+
+get_milestone_issue_information_impl <- function(milestones, working_dir) .Call(wrap__get_milestone_issue_information_impl, milestones, working_dir)
+
+generate_record_impl <- function(milestones, milestone_issues, configuration, record_path, working_dir, just_tables) .Call(wrap__generate_record_impl, milestones, milestone_issues, configuration, record_path, working_dir, just_tables)
+
 
 # nolint end

@@ -1175,6 +1175,7 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
         milestone_number <- if (
           !is.null(issue$milestone) && !is.null(issue$milestone$number)
         ) {
+          di
           issue$milestone$number
         } else {
           # Fallback: extract number from milestone name if it follows a pattern
