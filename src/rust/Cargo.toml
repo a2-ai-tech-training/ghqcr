@@ -12,7 +12,7 @@ name = 'ghqcr'
 
 [dependencies]
 extendr-api = { version = "0.8.1", features = ["result_condition", "serde"] }
-ghqctoolkit = { path = "/Users/wescummings/projects/ghqctoolkit" }
+ghqctoolkit = { path = "/Users/wescummings/projects/ghqc/ghqctoolkit" }
 gix = { version = "0.73", default-features = false }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 anyhow = "1.0"

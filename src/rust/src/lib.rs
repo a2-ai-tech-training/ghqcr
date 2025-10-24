@@ -2,6 +2,7 @@ mod configuration;
 mod create;
 mod git_utils;
 mod notify;
+mod record;
 mod utils;
 
 use std::sync::Once;
@@ -62,6 +63,7 @@ extendr_module! {
     use git_utils;
     use create;
     use configuration;
+    use record;
     fn init_logger_impl;
     fn log_message_impl;
     fn read_to_string_impl;

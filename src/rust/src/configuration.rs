@@ -18,6 +18,7 @@ extendr_module! {
     fn format_checklist_as_html_impl;
     fn get_checklist_display_name_impl;
     fn get_prepended_checklist_note_impl;
+    fn get_logo_path_impl;
 }
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
@@ -171,6 +172,17 @@ fn get_prepended_checklist_note_impl(configuration: Robj) -> Nullable<String> {
         Err(e) => {
             log::warn!("Could not de-serialize Configuration information: {e}. Defaulting prepended checklist note to none...");
             Nullable::Null
+        }
+    }
+}
+
+#[extendr]
+fn get_logo_path_impl(configuration: Robj) -> String {
+    match from_robj::<RConfiguration>(&configuration) {
+        Ok(c) => c.options.logo_path,
+        Err(e) => {
+            log::warn!("Could not de-serialize Configuration information: {e}. Defaulting logo path to 'logo.png'");
+            "logo.png".to_string()
         }
     }
 }
