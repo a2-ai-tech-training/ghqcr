@@ -231,7 +231,7 @@ extract_file_data <- function(input, selected_files, checklists, repo_users) {
         checklist_name == "" ||
         !checklist_name %in% checklists$name
     ) {
-      .le$debug(glue::glue("Checklist not selected for file {file_name}"))
+      .le$debug("Checklist not selected for file {file_name}")
       return(NULL)
     }
 
@@ -322,6 +322,7 @@ create_qc_issues <- function(
   qc_waiter$hide()
 
   modal_dialog <- if (inherits(res, "extendr_error")) {
+    .le$error("Error(s) occurred during issue creation: {res$value}")
     shiny::modalDialog(
       title = shiny::tags$div(
         style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -340,6 +341,7 @@ create_qc_issues <- function(
       shiny::HTML(markdown_to_html_impl(res$value))
     )
   } else {
+    .le$debug("Issues successfully created!")
     shiny::modalDialog(
       title = shiny::tags$div(
         style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
