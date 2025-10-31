@@ -152,7 +152,7 @@ ghqc_notify_ui <- function(id) {
 
 ghqc_notify_server <- function(id, working_dir) {
   shiny::moduleServer(id, function(input, output, session) {
-    .le$debug("Getting Milestones...")
+    .le$debug("Fetching Milestones...")
 
     milestones <- get_milestones(working_dir)
 
@@ -164,16 +164,30 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
+    .le$debug(
+      glue::glue(
+        "Found {nrow(milestone_df)} milestones ({milestone_df |> dplyr::filter(open) |> nrow()} open)"
+      )
+    )
+
     # Smart loading system: track what we've loaded
     loaded_milestone_issues <- shiny::reactiveVal(list()) # Store all loaded milestone issues
     loaded_milestone_names <- shiny::reactiveVal(character(0)) # Track which milestones we've loaded
 
     # Initially load only open milestones and their issues
     open_milestones <- milestones[milestone_df$open]
+    .le$debug("Loading issues for open milestones...")
     initial_milestone_issues <- get_multiple_milestone_issues(
       open_milestones,
       working_dir
     )
+    initial_milestone_issues_count <- purrr::map(
+      initial_milestone_issues,
+      ~ length(.x)
+    ) |>
+      unlist() |>
+      sum()
+    .le$debug("Successfully loaded {initial_milestone_issues_count} issues")
 
     # Store the initial loaded data
     loaded_milestone_issues(initial_milestone_issues)
@@ -223,6 +237,12 @@ ghqc_notify_server <- function(id, working_dir) {
           m$title %in% missing_names
         })]
 
+        .le$debug(
+          glue::glue(
+            "Missing issues for the milestone(s): {paste0(missing_milestones, collapse = \", \")}"
+          )
+        )
+
         if (length(missing_milestones) > 0) {
           # Load issues for missing milestones
           new_milestone_issues <- get_multiple_milestone_issues(
@@ -248,11 +268,13 @@ ghqc_notify_server <- function(id, working_dir) {
       }
 
       if (input$include_closed_milestones) {
+        .le$trace("Including all milestones...")
         # Include all milestones, sorted by number (reverse)
         milestone_df |>
           dplyr::arrange(dplyr::desc(number)) |>
           dplyr::pull(name)
       } else {
+        .le$trace("Including closed milestones...")
         # Only open milestones, sorted by number (reverse)
         milestone_df |>
           dplyr::filter(open) |>
@@ -306,6 +328,7 @@ ghqc_notify_server <- function(id, working_dir) {
           input$select_milestone == "All Issues"
       ) {
         if (isTRUE(input$include_closed_milestones)) {
+          .le$trace("Include closed milestones checked")
           # Checkbox checked: Load all missing milestones
 
           # Load all milestones that we haven't loaded yet
@@ -319,6 +342,7 @@ ghqc_notify_server <- function(id, working_dir) {
           )
         } else {
           # Checkbox unchecked: Filter out closed milestone issues
+          .le$trace("Include closed milestones unchecked")
 
           # Get only open milestones' issues
           current_issues <- loaded_milestone_issues()
@@ -456,6 +480,7 @@ ghqc_notify_server <- function(id, working_dir) {
     shiny::observeEvent(input$select_issue, {
       shiny::req(input$select_issue)
 
+      .le$debug("Finding issue information for {input$select_issue}...")
       # Get current milestone issues and flatten for searching
       current_issues <- current_milestone_issues()
       milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
@@ -515,10 +540,11 @@ ghqc_notify_server <- function(id, working_dir) {
       # Get commits for this issue
       issue_commits <- tryCatch(
         {
+          .le$debug("Getting commits for issue {input$select_issue}")
           .catch(get_issue_commits_impl(working_dir, selected_issue))
         },
         error = function(e) {
-          .le$debug(glue::glue("Error getting issue commits: {e$message}"))
+          .le$debug("Error getting issue commits: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -551,6 +577,7 @@ ghqc_notify_server <- function(id, working_dir) {
 
       # Update the commit range slider based on results
       if (is.null(issue_commits) || nrow(issue_commits) == 0) {
+        .le$warn("There are no commits available for {input$select_issue}")
         # No commits available - disable timeline
         current_issue_commits(NULL)
         output$commit_range_slider <- shiny::renderUI({
@@ -587,13 +614,22 @@ ghqc_notify_server <- function(id, working_dir) {
 
             # Filter based on checkbox
             if (input$include_non_editing) {
+              .le$debug(
+                "Displaying all {length(current_issue_commits())} commits"
+              )
               current_issue_commits()
             } else {
               # Show commits that either edit files OR have QC significance
-              current_issue_commits()[
+              rel_commits <- current_issue_commits()[
                 current_issue_commits()$edits_file == TRUE |
                   current_issue_commits()$qc_class != "no_comment",
               ]
+
+              .le$debug(
+                "Displaying {length(rel_commits)} relevant commits ({length(current_issue_commits())} available commits)"
+              )
+
+              rel_commits
             }
           })
         )
@@ -610,6 +646,7 @@ ghqc_notify_server <- function(id, working_dir) {
               !is.null(current_issue_commits())
           ) {
             selected_sha <- slider_result$from_commit()
+            .le$debug("From commit: {selected_sha}")
             commits_df <- current_issue_commits()
             matching_commit <- commits_df[
               substr(commits_df$hash, 1, 7) == selected_sha,
@@ -620,6 +657,7 @@ ghqc_notify_server <- function(id, working_dir) {
               selected_sha
             }
           } else {
+            .le$debug("No from commit selected")
             "No selection"
           }
         })
@@ -632,6 +670,7 @@ ghqc_notify_server <- function(id, working_dir) {
               !is.null(current_issue_commits())
           ) {
             selected_sha <- slider_result$to_commit()
+            .le$debug("To commit: {selected_sha}")
             commits_df <- current_issue_commits()
             matching_commit <- commits_df[
               substr(commits_df$hash, 1, 7) == selected_sha,
@@ -642,6 +681,7 @@ ghqc_notify_server <- function(id, working_dir) {
               selected_sha
             }
           } else {
+            .le$debug("No to commit selected")
             "No selection"
           }
         })
@@ -651,6 +691,7 @@ ghqc_notify_server <- function(id, working_dir) {
     # Preview and post comment flow
     shiny::observeEvent(input$preview, {
       shiny::req(input$select_issue)
+      .le$trace("Preview button clicked")
 
       # Extract file name from selected issue title
       # Issue titles should be in format like "QC [filename]" or similar
@@ -695,10 +736,11 @@ ghqc_notify_server <- function(id, working_dir) {
       # Get git status for the file
       git_status_result <- tryCatch(
         {
+          .le$debug("Determining git status for {filename}")
           .catch(file_git_status_impl(c(filename), working_dir))
         },
         error = function(e) {
-          .le$debug(glue::glue("Error getting git status: {e$message}"))
+          .le$debug("Error getting git status: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -799,6 +841,8 @@ ghqc_notify_server <- function(id, working_dir) {
       shiny::req(ready_to_preview() == TRUE)
       shiny::req(input$select_issue)
 
+      .le$debug("Creating preview for {input$select_issue}...")
+
       # Reset the reactive val
       ready_to_preview(FALSE)
 
@@ -841,6 +885,7 @@ ghqc_notify_server <- function(id, working_dir) {
       }
 
       if (is.null(selected_issue)) {
+        .le$debug("Did not find an associated issue")
         return()
       }
 
@@ -979,7 +1024,7 @@ ghqc_notify_server <- function(id, working_dir) {
           qc_comment
         },
         error = function(e) {
-          .le$debug(glue::glue("Error creating QC comment: {e$message}"))
+          .le$debug("Error creating QC comment: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1011,7 +1056,7 @@ ghqc_notify_server <- function(id, working_dir) {
           .catch(get_qc_comment_body_html_impl(qc_comment, working_dir))
         },
         error = function(e) {
-          .le$debug(glue::glue("Error getting QC comment body: {e$message}"))
+          .le$debug("Error getting QC comment body: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1034,6 +1079,7 @@ ghqc_notify_server <- function(id, working_dir) {
       )
 
       if (is.null(comment_html)) {
+        .le$warn("Comment preview is null. Not showing preview modal...")
         return()
       }
 
@@ -1070,6 +1116,7 @@ ghqc_notify_server <- function(id, working_dir) {
 
     # Handle posting the comment when Post Comment button is clicked
     shiny::observeEvent(input$post_comment, {
+      .le$trace("Post Comment button clicked")
       shiny::removeModal() # Close the preview modal
 
       # Get the stored qc_comment from the reactive value
@@ -1099,10 +1146,11 @@ ghqc_notify_server <- function(id, working_dir) {
       # Post the comment
       post_result <- tryCatch(
         {
+          .le$info("Posting QC comment...")
           .catch(post_qc_comment_impl(qc_comment, working_dir))
         },
         error = function(e) {
-          .le$debug(glue::glue("Error posting QC comment: {e$message}"))
+          .le$debug("Error posting QC comment: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1123,6 +1171,7 @@ ghqc_notify_server <- function(id, working_dir) {
           return(NULL)
         }
       )
+      .le$debug("Successfully posted QC comment!")
 
       if (!is.null(post_result)) {
         # Success! Show success modal
@@ -1175,7 +1224,6 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
         milestone_number <- if (
           !is.null(issue$milestone) && !is.null(issue$milestone$number)
         ) {
-          di
           issue$milestone$number
         } else {
           # Fallback: extract number from milestone name if it follows a pattern

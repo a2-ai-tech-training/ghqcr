@@ -114,7 +114,7 @@ ghqc_record_server <- function(
   shiny::moduleServer(id, function(input, output, session) {
     checklist_name <- get_checklist_display_name_impl(configuration)
 
-    .le$debug("Getting Milestones...")
+    .le$debug("Fetching Milestones...")
     milestones <- get_milestones(working_dir)
 
     milestone_df <- purrr::map_dfr(milestones, function(x) {
@@ -125,6 +125,12 @@ ghqc_record_server <- function(
       )
     })
 
+    .le$debug(
+      glue::glue(
+        "Found {nrow(milestone_df)} milestones ({milestone_df |> dplyr::filter(!open) |> nrow()} closed)"
+      )
+    )
+
     validator <- shinyvalidate::InputValidator$new()
     validator$add_rule("selected_milestones", shinyvalidate::sv_required())
     validator$add_rule("record_path", shinyvalidate::sv_required())
@@ -133,6 +139,7 @@ ghqc_record_server <- function(
 
     # Select Milestones dropdown update
     shiny::observeEvent(input$include_open, {
+      .le$trace("Checked Include Open Milestones: {input$include_open}")
       previously_selected <- shiny::isolate(input$selected_milestones)
 
       placeholder <- "Select Milestone(s)"
@@ -187,9 +194,11 @@ ghqc_record_server <- function(
 
         if (!is.null(input$record_path)) {
           if (nzchar(input$record_path) && input$record_path != expected_name) {
+            .le$debug("Determined PDF path to be edited by user")
             custom_pdf_name(TRUE)
           } else if (!nzchar(input$record_path)) {
             # If user clears the field, reset to automatic naming
+            .le$debug("PDF path is empty. Will reset to default...")
             custom_pdf_name(FALSE)
           }
         }
@@ -206,6 +215,8 @@ ghqc_record_server <- function(
         input$just_tables
       )
 
+      .le$debug("Updating pdf name to: {pdf_name}...")
+
       shiny::updateTextAreaInput(
         session,
         "record_path",
@@ -221,6 +232,9 @@ ghqc_record_server <- function(
         length(input$selected_milestones) != 0 &&
           nzchar(input$record_path)
       ) {
+        .le$debug(
+          "Enabling Generate QC Record button as all required values are present"
+        )
         shinyjs::removeClass("generate_record", "disabled-btn")
         shinyjs::addClass("generate_record", "enabled-btn")
         shinyjs::enable("generate_record")
@@ -246,6 +260,9 @@ ghqc_record_server <- function(
       w_check_status$show()
       on.exit(w_check_status$hide())
 
+      .le$debug(
+        "Loading issue information for the selected milestones: {paste(selected_milestone_objects(), collapse = \", \")}"
+      )
       .catch(get_milestone_issue_information_impl(
         selected_milestone_objects(),
         working_dir
@@ -255,6 +272,7 @@ ghqc_record_server <- function(
     generate_record <- shiny::reactiveVal(FALSE)
 
     shiny::observeEvent(milestone_issue_information(), {
+      .le$debug("Checking issue states...")
       modal_msg <- .catch(record_issue_modal_check_impl(
         milestone_issue_information(),
         checklist_name
@@ -262,6 +280,7 @@ ghqc_record_server <- function(
 
       # If no modal message, we return like the modal was "proceed anyway"
       if (!nzchar(modal_msg)) {
+        .le$debug("No notes to notify. Creating record...")
         generate_record(TRUE)
         return()
       }
@@ -291,16 +310,19 @@ ghqc_record_server <- function(
 
     shiny::observeEvent(input$proceed, {
       shiny::removeModal()
+      .le$trace("Proceed button clicked")
       generate_record(TRUE)
     })
 
     shiny::observeEvent(input$return, {
       shiny::removeModal()
+      .le$trace("Return button clicked")
       generate_record(FALSE)
     })
 
     shiny::observeEvent(generate_record(), {
       shiny::req(generate_record())
+      .le$debug("Rendering QC Record...")
       w_render_record <- waiter::Waiter$new(
         id = session$ns("main_container"),
         html = shiny::tagList(
@@ -330,6 +352,8 @@ ghqc_record_server <- function(
           paste("Error:", conditionMessage(e))
         }
       )
+
+      .le$debug("Record finished rendering. Creating modal...")
 
       # Show modal with the result
       show_result_modal(session, res)

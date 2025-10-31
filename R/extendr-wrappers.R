@@ -12,6 +12,8 @@ NULL
 
 init_logger_impl <- function() invisible(.Call(wrap__init_logger_impl))
 
+reset_logger_impl <- function() invisible(.Call(wrap__reset_logger_impl))
+
 log_message_impl <- function(level, msg) invisible(.Call(wrap__log_message_impl, level, msg))
 
 read_to_string_impl <- function(path) .Call(wrap__read_to_string_impl, path)

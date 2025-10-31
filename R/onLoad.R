@@ -19,12 +19,12 @@ init_logging <- function() {
     assign(".le", new.env(), envir = .GlobalEnv)
   }
 
-  # Create simple logging functions that use Rust backend
-  .le$trace <- function(msg) log_message_impl("TRACE", as.character(msg))
-  .le$debug <- function(msg) log_message_impl("DEBUG", as.character(msg))
-  .le$info <- function(msg) log_message_impl("INFO", as.character(msg))
-  .le$warn <- function(msg) log_message_impl("WARN", as.character(msg))
-  .le$error <- function(msg) log_message_impl("ERROR", as.character(msg))
+  # Create simple logging functions that use Rust backend with glue interpolation
+  .le$trace <- function(msg) log_message_impl("TRACE", as.character(glue::glue(msg, .envir = parent.frame())))
+  .le$debug <- function(msg) log_message_impl("DEBUG", as.character(glue::glue(msg, .envir = parent.frame())))
+  .le$info <- function(msg) log_message_impl("INFO", as.character(glue::glue(msg, .envir = parent.frame())))
+  .le$warn <- function(msg) log_message_impl("WARN", as.character(glue::glue(msg, .envir = parent.frame())))
+  .le$error <- function(msg) log_message_impl("ERROR", as.character(glue::glue(msg, .envir = parent.frame())))
 }
 
 .onUnload <- function(...) {

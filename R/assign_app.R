@@ -4,19 +4,24 @@ ghqc_assign_app <- function(
 ) {
   tryCatch(
     {
-      .le$debug("Loading configuration...")
+      .le$info("Loading Configuration...")
       configuration <- .catch(get_configuration_impl(config_dir))
+      .le$trace("Configuration loaded. Parsing info out...")
       checklists <- .catch(get_checklists_impl(configuration)) |>
         dplyr::arrange(name, name == "Custom")
+      .le$trace("Fetched {length(checklists)} checklists")
       checklist_display_name <- get_checklist_display_name_impl(
         configuration
       )
+      .le$trace("Determined checklist display name to be: {checklist_display_name}")
       prepended_checklist_note <- get_prepended_checklist_note_impl(
         configuration
       )
+      .le$trace("Determined prepended checklist note to be: {prepended_checklist_note}")
 
-      .le$debug("Getting Repo Users...")
+      .le$info("Loading Repo Users...")
       repo_users <- .catch(get_users_impl(working_dir))
+      .le$debug("Found {nrow(repo_users)} repo users")
     },
     error = function(e) {
       stop("Failed to load data: ", conditionMessage(e))
@@ -131,7 +136,7 @@ ghqc_assign_server <- function(
   prepended_checklist_note,
   repo_users
 ) {
-  .le$debug("Getting Milestones...")
+  .le$info("Fetching Milestones...")
   milestones <- get_milestones(working_dir)
 
   milestone_df <- purrr::map_dfr(milestones, function(x) {
@@ -141,6 +146,12 @@ ghqc_assign_server <- function(
       open = identical(x$state, "open")
     )
   })
+
+  .le$debug(
+    glue::glue(
+      "Found {nrow(milestone_df)} milestones ({milestone_df |> dplyr::filter(open) |> nrow()} open)"
+    )
+  )
 
   validator <- shinyvalidate::InputValidator$new()
 
@@ -284,6 +295,7 @@ ghqc_assign_server <- function(
     shiny::observe({
       shiny::req(input$milestone_toggle)
       if (input$milestone_toggle == "New") {
+        .le$trace("New Milestone radio button selected")
         validator$add_rule("new_milestone", shinyvalidate::sv_required())
         # Add custom rule to check if milestone name matches a closed milestone
         validator$add_rule("new_milestone", function(value) {
@@ -305,6 +317,7 @@ ghqc_assign_server <- function(
           return(NULL)
         })
       } else {
+        .le$trace("Existing Milestone radio button selected")
         validator$add_rule("existing_milestone", shinyvalidate::sv_required())
       }
     })
@@ -319,20 +332,50 @@ ghqc_assign_server <- function(
         NULL
       }
       issues_files <- if (is.null(milestone)) {
-        .le$debug(glue::glue(
-          "Milestone {milestone_input_rv()} does not exist yet"
-        ))
+        .le$debug("Milestone '{milestone_input_rv()}' does not exist yet")
         issues_in_milestone_rv(NULL)
+
+        # Update milestone description field for new milestone
+        if (
+          !is.null(input$milestone_toggle) &&
+            input$milestone_toggle == "New" &&
+            !is.null(input$new_milestone) &&
+            nchar(trimws(input$new_milestone)) > 0
+        ) {
+          shinyjs::enable("milestone_description")
+          shiny::updateTextAreaInput(
+            session,
+            "milestone_description",
+            placeholder = "(Optional)"
+          )
+        }
 
         list()
       } else {
-        .le$debug(glue::glue(
-          "Milestone {milestone_input_rv()} exists. Fetching issues..."
-        ))
+        .le$debug("Milestone {milestone$number} - '{milestone_input_rv()}' exists. Fetching issues...")
 
         issues <- .catch(get_milestone_issues_impl(working_dir, milestone))
 
         issues_in_milestone_rv(issues)
+
+        # Update milestone description field for existing milestone
+        if (
+          !is.null(input$milestone_toggle) &&
+            input$milestone_toggle == "New" &&
+            !is.null(input$new_milestone) &&
+            nchar(trimws(input$new_milestone)) > 0
+        ) {
+          .le$debug(
+            "Input Milestone Exists. Disabling Milestone Description field..."
+          )
+          shinyjs::disable("milestone_description")
+          shiny::updateTextAreaInput(
+            session,
+            "milestone_description",
+            value = "",
+            placeholder = "Description cannot be modified for existing milestones"
+          )
+        }
 
         sapply(issues, function(issue) {
           file.path(basename(working_dir), issue$title)
@@ -392,9 +435,7 @@ ghqc_assign_server <- function(
       shiny::req(checklists)
       shiny::req(input$checklist_name)
 
-      .le$debug(glue::glue(
-        "{capitalize(checklist_display_name)} selected for review: {input$checklist_name}"
-      ))
+      .le$debug("{capitalize(checklist_display_name)} selected for review: {input$checklist_name}")
       checklist <- checklists[checklists$name == input$checklist_name, ]
       shiny::HTML(.catch(format_checklist_as_html_impl(checklist)))
     })
@@ -432,9 +473,7 @@ ghqc_assign_server <- function(
           for (file in previous_files) {
             file_id <- session$ns(generate_input_id("file_row", file))
             attr_selector <- paste0("[id='", file_id, "']")
-            .le$debug(glue::glue(
-              "Removing {file} from UI using selector: {attr_selector}"
-            ))
+            .le$debug("Removing {file} from UI using selector: {attr_selector}")
             shiny::removeUI(selector = attr_selector)
           }
           rendered_files(character(0))
@@ -465,9 +504,7 @@ ghqc_assign_server <- function(
         for (file in files_to_remove) {
           file_id <- session$ns(generate_input_id("file_row", file))
           attr_selector <- paste0("[id='", file_id, "']")
-          .le$debug(glue::glue(
-            "Removing {file} from UI using selector: {attr_selector}"
-          ))
+          .le$debug("Removing {file} from UI using selector: {attr_selector}")
           shiny::removeUI(selector = attr_selector)
         }
 
@@ -541,17 +578,20 @@ ghqc_assign_server <- function(
     )
 
     shiny::observeEvent(input$create_qc_items, {
+      .le$trace("Assign QC Items button was clicked")
       shiny::req(milestone_input_rv())
 
       # Reset ready flag and trigger git status check
       ready_to_proceed(FALSE)
 
       # Check git status for selected files
+      .le$debug("Determining file git statuses:")
       git_statuses <- tryCatch(
         {
           file_git_status_impl(selected_files(), working_dir)
         },
         error = function(e) {
+          .le$error("Failed to get file git status: {e$message}")
           shiny::showModal(shiny::modalDialog(
             title = shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -574,6 +614,7 @@ ghqc_assign_server <- function(
       )
 
       if (is.null(git_statuses)) {
+        .le$debug("No git statuses to report. Proceeding...")
         return()
       }
 
@@ -603,6 +644,9 @@ ghqc_assign_server <- function(
 
         # Create title with appropriate buttons
         modal_title <- if (modal_check$state == "error") {
+          .le$warn(
+            "Git statuses exist that prevent user from assigning files for QC"
+          )
           # Error state: only Return button on left
           shiny::tags$div(
             style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -618,6 +662,9 @@ ghqc_assign_server <- function(
           )
         } else {
           # Warning state: Return on left, Proceed Anyway on right
+          .le$info(
+            "Git statuses exist that warn user, but do not require action"
+          )
           shiny::tags$div(
             style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
             shiny::tags$div(
@@ -646,17 +693,20 @@ ghqc_assign_server <- function(
       }
 
       # If we get here, git status is clean - proceed to issue creation
+      .le$info("No git statuses to report. Proceeding...")
       ready_to_proceed(TRUE)
     })
 
     # Handle "Proceed Anyway" button click
     shiny::observeEvent(input$proceed, {
+      .le$trace("User proceeded from modal check")
       shiny::removeModal()
       ready_to_proceed(TRUE)
     })
 
     # Handle "Return" button click
     shiny::observeEvent(input$return, {
+      .le$trace("User returned from modal check")
       shiny::removeModal()
       ready_to_proceed(FALSE)
     })
@@ -669,6 +719,7 @@ ghqc_assign_server <- function(
       # Reset the reactive val
       ready_to_proceed(FALSE)
 
+      .le$info("Creating QC Issues...")
       # Create the QC issues
       create_qc_issues(
         milestone_name = milestone_input_rv(),
