@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use extendr_api::{deserializer::from_robj, prelude::*, serializer::to_robj, Robj};
-use ghqctoolkit::{GitHubReader, GitHubWriter, QCComment};
+use ghqctoolkit::{GitHubReader, GitHubWriter, QCApprove, QCComment, QCUnapprove};
 use gix::ObjectId;
 use octocrab::models::{issues::Issue, Milestone};
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,12 @@ extendr_module! {
     fn create_qc_comment_impl;
     fn get_qc_comment_body_html_impl;
     fn post_qc_comment_impl;
+    fn create_qc_approval_impl;
+    fn get_qc_approval_body_html_impl;
+    fn post_qc_approval_impl;
+    fn create_qc_unapproval_impl;
+    fn get_qc_unapproval_body_html_impl;
+    fn post_qc_unapproval_impl;
 }
 
 // R-safe version of QCComment with string hashes instead of ObjectId
@@ -205,6 +211,134 @@ fn post_qc_comment_impl(r_qc_comment_robj: Robj, working_dir: &str) -> Result<St
     let result = rt
         .block_on(git_info.post_comment(&qc_comment))
         .map_err(|e| Error::Other(format!("Failed to post comment: {}", e)))?;
+
+    Ok(result)
+}
+
+// R-safe version of QCApproval with string hashes instead of ObjectId
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RQCApprove {
+    pub file: String,
+    pub commit: String, // String instead of ObjectId
+    pub issue: Issue,
+    pub note: Option<String>,
+}
+
+impl TryInto<QCApprove> for RQCApprove {
+    type Error = extendr_api::Error;
+    fn try_into(self) -> std::result::Result<QCApprove, Self::Error> {
+        let commit = ObjectId::from_str(&self.commit)
+            .map_err(|e| Error::Other(format!("Invalid approval commit: {e}")))?;
+
+        Ok(QCApprove {
+            file: PathBuf::from(self.file),
+            commit,
+            issue: self.issue,
+            note: self.note,
+        })
+    }
+}
+
+#[extendr]
+fn create_qc_approval_impl(
+    issue_robj: Robj,
+    filename: &str,
+    approval_commit: &str,
+    message: Nullable<String>,
+) -> Result<Robj> {
+    let issue: Issue = from_robj(&issue_robj)
+        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+
+    // Validate commit hashes can be parsed to ObjectId (but don't store ObjectId)
+    ObjectId::from_str(approval_commit).map_err(|e| {
+        Error::Other(format!(
+            "Invalid approval commit hash '{}': {}",
+            approval_commit, e
+        ))
+    })?;
+
+    let r_qc_approval = RQCApprove {
+        file: filename.to_string(),
+        commit: approval_commit.to_string(),
+        issue,
+        note: message.into_option(),
+    };
+
+    to_robj(&r_qc_approval)
+}
+
+#[extendr]
+fn get_qc_approval_body_html_impl(r_qc_approval_robj: Robj, working_dir: &str) -> Result<String> {
+    let git_info = get_cached_git_info(working_dir)?;
+
+    // Deserialize RQCApprove from Robj
+    let r_qc_approve: RQCApprove = from_robj(&r_qc_approval_robj)?;
+
+    // Convert RQCComment to QCComment for body generation
+    let qc_approve: QCApprove = r_qc_approve.try_into()?;
+
+    let markdown_body = qc_approve.body(git_info.as_ref());
+
+    // Convert markdown to HTML
+    let html_body = markdown::to_html(&markdown_body);
+    Ok(html_body)
+}
+
+#[extendr]
+fn post_qc_approval_impl(r_qc_approval_robj: Robj, working_dir: &str) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    // Deserialize RQCComment from Robj
+    let r_qc_approval: RQCApprove = from_robj(&r_qc_approval_robj)?;
+
+    // Convert RQCComment to QCComment for posting
+    let qc_approval: QCApprove = r_qc_approval.try_into()?;
+
+    // Post the comment using the GitHubWriter trait
+    let rt = get_rt();
+    let result = rt
+        .block_on(git_info.post_approval(&qc_approval))
+        .map_err(|e| Error::Other(format!("Failed to post approval: {}", e)))?;
+
+    Ok(result)
+}
+
+#[extendr]
+fn create_qc_unapproval_impl(issue_robj: Robj, reason: String) -> Result<Robj> {
+    let issue: Issue = from_robj(&issue_robj)
+        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+
+    let qc_unapprove = QCUnapprove { issue, reason };
+
+    to_robj(&qc_unapprove)
+}
+
+#[extendr]
+fn get_qc_unapproval_body_html_impl(r_qc_unapproval_robj: Robj) -> Result<String> {
+    // Deserialize QCUnapprove from Robj
+    let qc_unapprove: QCUnapprove = from_robj(&r_qc_unapproval_robj)?;
+
+    let markdown_body = qc_unapprove.body();
+
+    // Convert markdown to HTML
+    let html_body = markdown::to_html(&markdown_body);
+    Ok(html_body)
+}
+
+#[extendr]
+fn post_qc_unapproval_impl(r_qc_unapproval_robj: Robj, working_dir: &str) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    // Deserialize QCUnapprove from Robj
+    let qc_unapprove: QCUnapprove = from_robj(&r_qc_unapproval_robj)?;
+
+    // Post the comment using the GitHubWriter trait
+    let rt = get_rt();
+    let result = rt
+        .block_on(git_info.post_unapproval(&qc_unapprove))
+        .map_err(|e| Error::Other(format!("Failed to post unapproval: {}", e)))?;
 
     Ok(result)
 }

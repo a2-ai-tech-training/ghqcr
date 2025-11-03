@@ -28,6 +28,18 @@ get_qc_comment_body_html_impl <- function(r_qc_comment_robj, working_dir) .Call(
 
 post_qc_comment_impl <- function(r_qc_comment_robj, working_dir) .Call(wrap__post_qc_comment_impl, r_qc_comment_robj, working_dir)
 
+create_qc_approval_impl <- function(issue_robj, filename, approval_commit, message) .Call(wrap__create_qc_approval_impl, issue_robj, filename, approval_commit, message)
+
+get_qc_approval_body_html_impl <- function(r_qc_approval_robj, working_dir) .Call(wrap__get_qc_approval_body_html_impl, r_qc_approval_robj, working_dir)
+
+post_qc_approval_impl <- function(r_qc_approval_robj, working_dir) .Call(wrap__post_qc_approval_impl, r_qc_approval_robj, working_dir)
+
+create_qc_unapproval_impl <- function(issue_robj, reason) .Call(wrap__create_qc_unapproval_impl, issue_robj, reason)
+
+get_qc_unapproval_body_html_impl <- function(r_qc_unapproval_robj) .Call(wrap__get_qc_unapproval_body_html_impl, r_qc_unapproval_robj)
+
+post_qc_unapproval_impl <- function(r_qc_unapproval_robj, working_dir) .Call(wrap__post_qc_unapproval_impl, r_qc_unapproval_robj, working_dir)
+
 get_milestones_impl <- function(working_dir) .Call(wrap__get_milestones_impl, working_dir)
 
 get_milestone_issues_impl <- function(working_dir, milestone) .Call(wrap__get_milestone_issues_impl, working_dir, milestone)

@@ -4,12 +4,14 @@
 \alias{commit_slider_server}
 \title{Commit Range Slider Server}
 \usage{
-commit_slider_server(id, commits)
+commit_slider_server(id, commits, single_select = reactive(FALSE))
 }
 \arguments{
 \item{id}{Module ID}
 
 \item{commits}{Reactive data frame with columns: hash, message, qc_class, edits_file}
+
+\item{single_select}{Reactive logical, if TRUE shows single handle for single commit selection}
 }
 \description{
 Commit Range Slider Server
