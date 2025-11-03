@@ -26,6 +26,10 @@ ghqc_notify_ui <- function(id) {
       shiny::tags$style(
         HTML(
           "
+          /* Add gap between tabs and milestone filter */
+          #ghqc_notify_app-type_tab {
+            margin-bottom: 20px;
+          }
           /* Reduce spacing between dropdowns and their associated checkboxes */
           #ghqc_notify_app-select_milestone {
             margin-bottom: 5px;
@@ -37,7 +41,7 @@ ghqc_notify_ui <- function(id) {
           #ghqc_notify_app-select_issue {
             margin-bottom: 5px;
           }
-          .shiny-input-container:has(#ghqc_notify_app-include_closed_issues) {
+          .shiny-input-container:has(#ghqc_notify_app-include_more_issues) {
             margin-top: 0px;
             margin-bottom: 15px;
           }
@@ -73,6 +77,12 @@ ghqc_notify_ui <- function(id) {
       miniUI::miniContentPanel(
         shiny::div(
           id = ns("center_content"),
+          shiny::tabsetPanel(
+            id = ns("type_tab"),
+            shiny::tabPanel(title = "Notify Changes"),
+            shiny::tabPanel(title = "Approve"),
+            shiny::tabPanel(title = "Unapprove")
+          ),
           shiny::selectInput(
             ns("select_milestone"),
             "Filter Issues by Milestone",
@@ -91,7 +101,7 @@ ghqc_notify_ui <- function(id) {
             multiple = FALSE
           ),
           shiny::checkboxInput(
-            ns("include_closed_issues"),
+            ns("include_more_issues"),
             "Include Closed Issues",
             value = FALSE
           ),
@@ -106,6 +116,7 @@ ghqc_notify_ui <- function(id) {
             shiny::checkboxInput(ns("show_diff"), "Show file difference", TRUE)
           ),
           shiny::h4(
+            id = ns("commits_header"),
             "Select commits to compare:",
           ),
           shiny::radioButtons(
@@ -214,6 +225,33 @@ ghqc_notify_server <- function(id, working_dir) {
     # Reactive value to store the current qc_comment for posting
     current_qc_comment <- shiny::reactiveVal(NULL)
 
+    # Initialize validator for form validation
+    iv <- shinyvalidate::InputValidator$new()
+
+    # Track if message validation rule is active
+    message_rule_active <- shiny::reactiveVal(FALSE)
+
+    # Reactive to determine if Preview button should be enabled
+    preview_enabled <- shiny::reactive({
+      # Always check if an issue is selected
+      if (is.null(input$select_issue) || input$select_issue == "") {
+        return(FALSE)
+      }
+
+      # For Unapprove tab, check validation state
+      if (input$type_tab == "Unapprove") {
+        return(iv$is_valid())
+      }
+
+      # For other tabs, just need an issue selected
+      return(TRUE)
+    })
+
+    # Update Preview button state based on validation
+    shiny::observe({
+      shinyjs::toggleState("preview", preview_enabled())
+    })
+
     shiny::observe(waiter::waiter_hide())
 
     # Initialize the commit range slider with placeholder
@@ -298,6 +336,67 @@ ghqc_notify_server <- function(id, working_dir) {
       loaded_milestone_issues()
     })
 
+    shiny::observeEvent(input$type_tab, {
+      # For Unapprove tab: default to closed issues, checkbox allows including open
+      # For other tabs: default to open issues, checkbox allows including closed
+      if (input$type_tab == "Unapprove") {
+        label <- "Include Open Issues"
+        default_value <- FALSE  # Default to closed issues only
+
+        # Hide commit-related UI for Unapprove tab
+        shinyjs::hide("show_diff_wrap")
+        shinyjs::hide("commits_header")
+        shinyjs::hide("include_non_editing")
+        shinyjs::hide("commit_range_slider")
+        shinyjs::hide("from_commit_display")
+        shinyjs::hide("to_commit_display")
+
+        # Update message field to be required
+        shiny::updateTextAreaInput(
+          session,
+          "message",
+          label = "Message",
+          placeholder = "Reason for Unapproval"
+        )
+
+        # Add validation rule for message field if not already active
+        if (!message_rule_active()) {
+          iv$add_rule("message", shinyvalidate::sv_required())
+          message_rule_active(TRUE)
+        }
+        iv$enable()
+      } else {
+        label <- "Include Closed Issues"
+        default_value <- FALSE  # Default to open issues only
+
+        # Show commit-related UI for other tabs
+        shinyjs::show("show_diff_wrap")
+        shinyjs::show("commits_header")
+        shinyjs::show("include_non_editing")
+        shinyjs::show("commit_range_slider")
+        shinyjs::show("from_commit_display")
+        shinyjs::show("to_commit_display")
+
+        # Update message field to be optional
+        shiny::updateTextAreaInput(
+          session,
+          "message",
+          label = "Message",
+          placeholder = "(Optional)"
+        )
+
+        # Disable validator for other tabs
+        iv$disable()
+      }
+
+      shiny::updateCheckboxInput(
+        session,
+        inputId = "include_more_issues",
+        label = label,
+        value = default_value
+      )
+    })
+
     # Update milestone choices when checkbox changes
     shiny::observe({
       milestone_names <- filtered_milestone_names()
@@ -321,55 +420,77 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
-    # Handle Include Closed Milestones checkbox - load missing milestones if "All Issues" is selected
-    shiny::observeEvent(input$include_closed_milestones, {
-      if (
-        !is.null(input$select_milestone) &&
-          input$select_milestone == "All Issues"
-      ) {
-        if (isTRUE(input$include_closed_milestones)) {
-          .le$trace("Include closed milestones checked")
-          # Checkbox checked: Load all missing milestones
+    # Consolidated reactive for available issue choices
+    # This combines milestone selection and include more issues filtering
+    available_issue_choices <- shiny::reactive({
+      # Require basic inputs
+      shiny::req(input$select_milestone)
 
-          # Load all milestones that we haven't loaded yet
-          all_milestone_names <- milestone_df |> dplyr::pull(name)
-          load_missing_milestones(all_milestone_names)
+      # Get current milestone issues
+      current_issues <- current_milestone_issues()
+      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
 
-          # Update the issue list with all milestones
-          current_issues <- loaded_milestone_issues()
-          milestone_issue_df <- flatten_multiple_milestone_issues(
-            current_issues
-          )
+      # Filter by selected milestone
+      filtered_issues <- if (input$select_milestone == "All Issues") {
+        milestone_issue_df
+      } else {
+        milestone_issue_df |>
+          dplyr::filter(milestone == input$select_milestone)
+      }
+
+      # Apply open/closed filtering based on tab and checkbox
+      include_more <- isTRUE(input$include_more_issues)
+
+      if (!include_more) {
+        # Default behavior based on tab
+        if (input$type_tab == "Unapprove") {
+          # Unapprove tab: default to closed issues only
+          filtered_issues <- filtered_issues |>
+            dplyr::filter(open == FALSE)
         } else {
-          # Checkbox unchecked: Filter out closed milestone issues
-          .le$trace("Include closed milestones unchecked")
-
-          # Get only open milestones' issues
-          current_issues <- loaded_milestone_issues()
-          open_milestone_names <- milestone_df |>
-            dplyr::filter(open) |>
-            dplyr::pull(name)
-
-          # Filter loaded issues to only include open milestones
-          open_milestone_issues <- current_issues[
-            names(current_issues) %in% open_milestone_names
-          ]
-          milestone_issue_df <- flatten_multiple_milestone_issues(
-            open_milestone_issues
-          )
-        }
-
-        # Apply closed issues filter
-        include_closed_issues <- isTRUE(input$include_closed_issues)
-
-        if (!include_closed_issues) {
-          milestone_issue_df <- milestone_issue_df |>
+          # Other tabs: default to open issues only
+          filtered_issues <- filtered_issues |>
             dplyr::filter(open == TRUE)
         }
+      }
+      # If include_more is TRUE, show all issues (no additional filtering)
 
-        # Preserve current issue selection if it's still valid
-        current_issue_selection <- input$select_issue
-        new_issue_choices <- milestone_issue_df |> format_issues()
+      filtered_issues
+    })
+
+    # Consolidated observer for updating issue choices
+    # Triggers on changes to milestone selection, include_more_issues checkbox, or type_tab
+    shiny::observe({
+      # Only update if we have a milestone selected
+      shiny::req(input$select_milestone)
+
+      # If "All Issues" is selected and we need closed milestones, load them
+      if (input$select_milestone == "All Issues" && isTRUE(input$include_closed_milestones)) {
+        all_milestone_names <- milestone_df |> dplyr::pull(name)
+        load_missing_milestones(all_milestone_names)
+      }
+
+      # Get filtered issue choices using our consolidated reactive
+      filtered_issues <- available_issue_choices()
+
+      # Prepare issue choices
+      current_issue_selection <- input$select_issue
+      new_issue_choices <- filtered_issues |> format_issues()
+
+      # Check if there are any issues available
+      if (length(new_issue_choices) == 0) {
+        # No issues available - show helpful message
+        placeholder_msg <- if (input$type_tab == "Unapprove") {
+          "No closed issues available"
+        } else {
+          "No open issues available"
+        }
+
+        # Create a single disabled choice that shows the message
+        new_issue_choices <- setNames("", placeholder_msg)
+        selected_issue_value <- NULL
+      } else {
+        # Issues are available - preserve selection if valid
         selected_issue_value <- if (
           !is.null(current_issue_selection) &&
             current_issue_selection %in% new_issue_choices
@@ -378,52 +499,6 @@ ghqc_notify_server <- function(id, working_dir) {
         } else {
           NULL # Let Shiny handle default selection
         }
-
-        shiny::updateSelectizeInput(
-          session,
-          "select_issue",
-          choices = new_issue_choices,
-          selected = selected_issue_value
-        )
-      }
-    })
-
-    shiny::observeEvent(input$select_milestone, {
-      shiny::req(input$select_milestone)
-
-      # If a specific milestone is selected, ensure we have its issues loaded
-      if (input$select_milestone != "All Issues") {
-        load_missing_milestones(input$select_milestone)
-      }
-
-      # Get the current milestone issues and filter
-      current_issues <- current_milestone_issues()
-      milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
-
-      issue_choices <- if (input$select_milestone == "All Issues") {
-        milestone_issue_df
-      } else {
-        milestone_issue_df |>
-          dplyr::filter(milestone == input$select_milestone)
-      }
-
-      # Apply closed issues filter (default to FALSE if input not available)
-      include_closed <- isTRUE(input$include_closed_issues)
-
-      if (!include_closed) {
-        issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
-      }
-
-      # Preserve current issue selection if it's still valid
-      current_issue_selection <- input$select_issue
-      new_issue_choices <- issue_choices |> format_issues()
-      selected_issue_value <- if (
-        !is.null(current_issue_selection) &&
-          current_issue_selection %in% new_issue_choices
-      ) {
-        current_issue_selection
-      } else {
-        NULL # Let Shiny handle default selection
       }
 
       shiny::updateSelectizeInput(
@@ -434,45 +509,13 @@ ghqc_notify_server <- function(id, working_dir) {
       )
     })
 
-    # Also update issue choices when closed issues checkbox changes
-    shiny::observeEvent(input$include_closed_issues, {
-      if (!is.null(input$select_milestone) && input$select_milestone != "") {
-        # Directly update the issue choices instead of triggering milestone observer
-        current_issues <- current_milestone_issues()
-        milestone_issue_df <- flatten_multiple_milestone_issues(current_issues)
+    # Handle milestone loading when selection changes
+    shiny::observeEvent(input$select_milestone, {
+      shiny::req(input$select_milestone)
 
-        issue_choices <- if (input$select_milestone == "All Issues") {
-          milestone_issue_df
-        } else {
-          milestone_issue_df |>
-            dplyr::filter(milestone == input$select_milestone)
-        }
-
-        # Apply closed issues filter
-        include_closed <- isTRUE(input$include_closed_issues)
-
-        if (!include_closed) {
-          issue_choices <- issue_choices |> dplyr::filter(open == TRUE)
-        }
-
-        # Preserve current issue selection if it's still valid
-        current_issue_selection <- input$select_issue
-        new_issue_choices <- issue_choices |> format_issues()
-        selected_issue_value <- if (
-          !is.null(current_issue_selection) &&
-            current_issue_selection %in% new_issue_choices
-        ) {
-          current_issue_selection
-        } else {
-          NULL # Let Shiny handle default selection
-        }
-
-        shiny::updateSelectizeInput(
-          session,
-          "select_issue",
-          choices = new_issue_choices,
-          selected = selected_issue_value
-        )
+      # If a specific milestone is selected, ensure we have its issues loaded
+      if (input$select_milestone != "All Issues") {
+        load_missing_milestones(input$select_milestone)
       }
     })
 
