@@ -20,7 +20,8 @@ commit_slider_ui <- function(id) {
 #'
 #' @param id Module ID
 #' @param commits Reactive data frame with columns: hash, message, qc_class, edits_file
-commit_slider_server <- function(id, commits) {
+#' @param single_select Reactive logical, if TRUE shows single handle for single commit selection
+commit_slider_server <- function(id, commits, single_select = reactive(FALSE)) {
   shiny::moduleServer(id, function(input, output, session) {
     # Reactive slider UI - commits are already filtered by main app
     output$slider_ui <- shiny::renderUI({
@@ -77,44 +78,57 @@ commit_slider_server <- function(id, commits) {
       }
 
       # Implement default selection logic
-      if (!is.null(latest_file_changing) && !is.null(latest_non_no_comment)) {
-        if (latest_file_changing > latest_non_no_comment) {
-          # Case 1: File-changing commit occurs after latest non-no_comment
-          default_from <- commit_labels[latest_non_no_comment]
+      if (single_select()) {
+        # Single select: just pick the latest relevant commit
+        if (!is.null(latest_non_no_comment)) {
+          default_to <- commit_labels[latest_non_no_comment]
+        } else if (!is.null(latest_file_changing)) {
           default_to <- commit_labels[latest_file_changing]
         } else {
-          # One selector on non-no_comment, other tries to be different file-changing
-          default_to <- commit_labels[latest_non_no_comment]
-
-          # Try to find a different file-changing commit
-          other_file_changing <- file_changing_commits[file_changing_commits != latest_non_no_comment]
-          if (length(other_file_changing) > 0) {
-            default_from <- commit_labels[max(other_file_changing)]
+          default_to <- commit_labels[length(commit_labels)]
+        }
+        default_from <- default_to  # Same commit for both (only "to" will be shown)
+      } else {
+        # Range selection logic (existing)
+        if (!is.null(latest_file_changing) && !is.null(latest_non_no_comment)) {
+          if (latest_file_changing > latest_non_no_comment) {
+            # Case 1: File-changing commit occurs after latest non-no_comment
+            default_from <- commit_labels[latest_non_no_comment]
+            default_to <- commit_labels[latest_file_changing]
           } else {
-            # Fall back to previous commit if available
-            default_from <- if (latest_non_no_comment > 1) {
-              commit_labels[latest_non_no_comment - 1]
+            # One selector on non-no_comment, other tries to be different file-changing
+            default_to <- commit_labels[latest_non_no_comment]
+
+            # Try to find a different file-changing commit
+            other_file_changing <- file_changing_commits[file_changing_commits != latest_non_no_comment]
+            if (length(other_file_changing) > 0) {
+              default_from <- commit_labels[max(other_file_changing)]
             } else {
-              commit_labels[min(2, length(commit_labels))]
+              # Fall back to previous commit if available
+              default_from <- if (latest_non_no_comment > 1) {
+                commit_labels[latest_non_no_comment - 1]
+              } else {
+                commit_labels[min(2, length(commit_labels))]
+              }
             }
           }
-        }
-      } else if (!is.null(latest_non_no_comment)) {
-        # Only non-no_comment commits available
-        default_to <- commit_labels[latest_non_no_comment]
-        default_from <- if (latest_non_no_comment > 1) {
-          commit_labels[latest_non_no_comment - 1]
+        } else if (!is.null(latest_non_no_comment)) {
+          # Only non-no_comment commits available
+          default_to <- commit_labels[latest_non_no_comment]
+          default_from <- if (latest_non_no_comment > 1) {
+            commit_labels[latest_non_no_comment - 1]
+          } else {
+            commit_labels[min(2, length(commit_labels))]
+          }
         } else {
-          commit_labels[min(2, length(commit_labels))]
+          # Fallback to simple last two commits
+          default_from <- if (length(commit_labels) > 1) {
+            commit_labels[length(commit_labels) - 1]
+          } else {
+            commit_labels[1]
+          }
+          default_to <- commit_labels[length(commit_labels)]
         }
-      } else {
-        # Fallback to simple last two commits
-        default_from <- if (length(commit_labels) > 1) {
-          commit_labels[length(commit_labels) - 1]
-        } else {
-          commit_labels[1]
-        }
-        default_to <- commit_labels[length(commit_labels)]
       }
 
       shiny::div(
@@ -204,21 +218,23 @@ commit_slider_server <- function(id, commits) {
                 )
               )
             }),
-            # Handle 1
-            shiny::div(
-              id = session$ns("handle1"),
-              class = "commit-slider-handle",
-              style = glue::glue(
-                "position: absolute; top: 18px; width: 18px; height: 18px; background: #007bff; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); left: {if(length(commit_labels) == 1) 50 else (match(default_from, commit_labels)-1) / (length(commit_labels)-1) * 100}%; transform: translateX(-50%);"
-              ),
-              `data-commit` = default_from
-            ),
-            # Handle 2
+            # Handle 1 (only show in range mode)
+            if (!single_select()) {
+              shiny::div(
+                id = session$ns("handle1"),
+                class = "commit-slider-handle",
+                style = glue::glue(
+                  "position: absolute; top: 18px; width: 18px; height: 18px; background: #007bff; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); left: {if(length(commit_labels) == 1) 50 else (match(default_from, commit_labels)-1) / (length(commit_labels)-1) * 100}%; transform: translateX(-50%);"
+                ),
+                `data-commit` = default_from
+              )
+            },
+            # Handle 2 (always show, represents selected commit in single mode)
             shiny::div(
               id = session$ns("handle2"),
               class = "commit-slider-handle",
               style = glue::glue(
-                "position: absolute; top: 18px; width: 18px; height: 18px; background: #007bff; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); left: {if(length(commit_labels) == 1) 50 else (match(default_to, commit_labels)-1) / (length(commit_labels)-1) * 100}%; transform: translateX(-50%);"
+                "position: absolute; top: 18px; width: 18px; height: 18px; background: {if(single_select()) '#28a745' else '#007bff'}; border: 2px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.3); left: {if(length(commit_labels) == 1) 50 else (match(default_to, commit_labels)-1) / (length(commit_labels)-1) * 100}%; transform: translateX(-50%);"
               ),
               `data-commit` = default_to
             )
