@@ -643,7 +643,22 @@ ghqc_notify_server <- function(id, working_dir) {
         return()
       }
 
-      # Get commits for this issue
+      # Skip commit loading for Unapprove tab (no commits needed)
+      if (input$type_tab == "Unapprove") {
+        # For Unapprove, we don't need commits - just clear any existing commit UI
+        current_issue_commits(NULL)
+        output$commit_range_slider <- shiny::renderUI({
+          shiny::div(
+            shiny::p(
+              "No commits needed for unapproval",
+              style = "color: #999; font-style: italic; text-align: center; padding: 20px;"
+            )
+          )
+        })
+        return()
+      }
+
+      # Get commits for this issue (only for Approve and Notify Changes tabs)
       issue_commits <- tryCatch(
         {
           .le$debug("Getting commits for issue {input$select_issue}")
@@ -840,101 +855,107 @@ ghqc_notify_server <- function(id, working_dir) {
       # Extract filename from issue title
       filename <- selected_issue_info$name
 
-      # Get git status for the file
-      git_status_result <- tryCatch(
-        {
-          .le$debug("Determining git status for {filename}")
-          .catch(file_git_status_impl(c(filename), working_dir))
-        },
-        error = function(e) {
-          .le$debug("Error getting git status: {e$message}")
-          shiny::showModal(shiny::modalDialog(
-            title = shiny::tags$div(
+      # Skip git status validation for Unapprove tab (no files/commits involved)
+      if (input$type_tab == "Unapprove") {
+        # Unapprove doesn't need git status checks - proceed directly to preview
+        ready_to_preview(TRUE)
+      } else {
+        # Get git status for the file (only for Approve and Notify Changes tabs)
+        git_status_result <- tryCatch(
+          {
+            .le$debug("Determining git status for {filename}")
+            .catch(file_git_status_impl(c(filename), working_dir))
+          },
+          error = function(e) {
+            .le$debug("Error getting git status: {e$message}")
+            shiny::showModal(shiny::modalDialog(
+              title = shiny::tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                shiny::tags$div(
+                  shiny::modalButton("Return"),
+                  style = "flex: 0 0 auto;"
+                ),
+                shiny::tags$div(
+                  "Git Status Error",
+                  style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+                ),
+                shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+              ),
+              glue::glue("Could not check git status for file: {filename}"),
+              footer = NULL,
+              easyClose = TRUE
+            ))
+            return(NULL)
+          }
+        )
+
+        if (is.null(git_status_result)) {
+          return()
+        }
+
+        # Check for git issues using the modal check function
+        modal_result <- git_issue_modal_check(git_status_result, character(0))
+
+        if (!is.null(modal_result$message)) {
+          # Show modal with git status warnings/errors
+          modal_title_text <- if (modal_result$state == "error") {
+            "Git Issues Found - Cannot Proceed"
+          } else {
+            "Git Status Warning"
+          }
+
+          # Create title with appropriate buttons
+          modal_title <- if (modal_result$state == "error") {
+            # Error state: only Return button on left
+            shiny::tags$div(
               style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
               shiny::tags$div(
                 shiny::modalButton("Return"),
                 style = "flex: 0 0 auto;"
               ),
               shiny::tags$div(
-                "Git Status Error",
+                modal_title_text,
                 style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
               ),
               shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
-            ),
-            glue::glue("Could not check git status for file: {filename}"),
-            footer = NULL,
-            easyClose = TRUE
-          ))
-          return(NULL)
-        }
-      )
-
-      if (is.null(git_status_result)) {
-        return()
-      }
-
-      # Check for git issues using the modal check function
-      modal_result <- git_issue_modal_check(git_status_result, character(0))
-
-      if (!is.null(modal_result$message)) {
-        # Show modal with git status warnings/errors
-        modal_title_text <- if (modal_result$state == "error") {
-          "Git Issues Found - Cannot Proceed"
-        } else {
-          "Git Status Warning"
-        }
-
-        # Create title with appropriate buttons
-        modal_title <- if (modal_result$state == "error") {
-          # Error state: only Return button on left
-          shiny::tags$div(
-            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
-            shiny::tags$div(
-              shiny::modalButton("Return"),
-              style = "flex: 0 0 auto;"
-            ),
-            shiny::tags$div(
-              modal_title_text,
-              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
-            ),
-            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
-          )
-        } else {
-          # Warning state: Return on left, Proceed Anyway on right
-          shiny::tags$div(
-            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
-            shiny::tags$div(
-              shiny::modalButton("Return"),
-              style = "flex: 0 0 auto;"
-            ),
-            shiny::tags$div(
-              modal_title_text,
-              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
-            ),
-            shiny::tags$div(
-              shiny::actionButton(
-                "proceed_anyway",
-                "Proceed Anyway",
-                class = "btn-warning"
-              ),
-              style = "flex: 0 0 auto;"
             )
-          )
+          } else {
+            # Warning state: Return on left, Proceed Anyway on right
+            shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                modal_title_text,
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(
+                shiny::actionButton(
+                  "proceed_anyway",
+                  "Proceed Anyway",
+                  class = "btn-warning"
+                ),
+                style = "flex: 0 0 auto;"
+              )
+            )
+          }
+
+          shiny::showModal(shiny::modalDialog(
+            title = modal_title,
+            shiny::HTML(modal_result$message),
+            footer = NULL,
+            easyClose = modal_result$state != "error"
+          ))
+
+          # If it's just a warning, we could proceed, but for now just stop
+          return()
         }
 
-        shiny::showModal(shiny::modalDialog(
-          title = modal_title,
-          shiny::HTML(modal_result$message),
-          footer = NULL,
-          easyClose = modal_result$state != "error"
-        ))
-
-        # If it's just a warning, we could proceed, but for now just stop
-        return()
+        # If we get here, git status is clean - proceed to next step (QC comment creation)
+        ready_to_preview(TRUE)
       }
-
-      # If we get here, git status is clean - proceed to next step (QC comment creation)
-      ready_to_preview(TRUE)
     })
 
     # Handle proceed anyway button for warnings
@@ -996,27 +1017,29 @@ ghqc_notify_server <- function(id, working_dir) {
         return()
       }
 
-      # Check if commit slider is available
-      slider_result <- commit_slider_result()
-      if (is.null(slider_result) || is.null(current_issue_commits())) {
-        shiny::showModal(shiny::modalDialog(
-          title = shiny::tags$div(
-            style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
-            shiny::tags$div(
-              shiny::modalButton("Return"),
-              style = "flex: 0 0 auto;"
+      # Check if commit slider is available (only for tabs that need commits)
+      if (input$type_tab != "Unapprove") {
+        slider_result <- commit_slider_result()
+        if (is.null(slider_result) || is.null(current_issue_commits())) {
+          shiny::showModal(shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "No Commits Available",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
             ),
-            shiny::tags$div(
-              "No Commits Available",
-              style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
-            ),
-            shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
-          ),
-          "Please select an issue with available commits to preview.",
-          footer = NULL,
-          easyClose = TRUE
-        ))
-        return()
+            "Please select an issue with available commits to preview.",
+            footer = NULL,
+            easyClose = TRUE
+          ))
+          return()
+        }
       }
 
       # Get commit selection and message
@@ -1283,6 +1306,19 @@ ghqc_notify_server <- function(id, working_dir) {
         return()
       }
 
+      # Get dynamic text based on tab type
+      modal_title <- switch(input$type_tab,
+        "Unapprove" = "Preview QC Unapproval",
+        "Approve" = "Preview QC Approval",
+        "Preview QC Comment"  # Default for Notify Changes
+      )
+
+      button_text <- switch(input$type_tab,
+        "Unapprove" = "Post Unapproval",
+        "Approve" = "Post Approval",
+        "Post Comment"  # Default for Notify Changes
+      )
+
       # Show preview modal with HTML body
       shiny::showModal(shiny::modalDialog(
         title = shiny::tags$div(
@@ -1292,13 +1328,13 @@ ghqc_notify_server <- function(id, working_dir) {
             style = "flex: 0 0 auto;"
           ),
           shiny::tags$div(
-            "Preview QC Comment",
+            modal_title,
             style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
           ),
           shiny::tags$div(
             shiny::actionButton(
               session$ns("post_comment"),
-              "Post Comment",
+              button_text,
               class = "btn-primary"
             ),
             style = "flex: 0 0 auto;"
