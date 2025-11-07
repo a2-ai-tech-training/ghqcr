@@ -17,6 +17,7 @@ extendr_module! {
     fn get_users_impl;
     fn get_issue_commits_impl;
     fn file_git_status_impl;
+    fn get_head_commit_impl;
 }
 
 #[extendr]
@@ -179,6 +180,7 @@ struct RIssueCommit {
     message: String,
     qc_class: String, // Will convert QCClass to String for R compatibility
     edits_file: bool,
+    reviewed: bool,
 }
 
 impl From<IssueCommit> for RIssueCommit {
@@ -188,6 +190,7 @@ impl From<IssueCommit> for RIssueCommit {
             message: commit.message,
             qc_class: commit.state.to_string(),
             edits_file: commit.file_changed,
+            reviewed: commit.reviewed,
         }
     }
 }
@@ -216,4 +219,16 @@ fn get_issue_commits_impl(working_dir: &str, issue_robj: Robj) -> Result<Datafra
     r_commits
         .into_dataframe()
         .map_err(|e| Error::Other(format!("Failed to create dataframe: {}", e)))
+}
+
+#[extendr]
+fn get_head_commit_impl(working_dir: &str) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    // Use the existing commit() trait function to get HEAD commit
+    match git_info.commit() {
+        Ok(commit) => Ok(commit.to_string()),
+        Err(e) => Err(Error::Other(format!("Failed to get HEAD commit: {}", e))),
+    }
 }

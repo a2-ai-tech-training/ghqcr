@@ -80,6 +80,7 @@ ghqc_notify_ui <- function(id) {
           shiny::tabsetPanel(
             id = ns("type_tab"),
             shiny::tabPanel(title = "Notify Changes"),
+            shiny::tabPanel(title = "Review"),
             shiny::tabPanel(title = "Approve"),
             shiny::tabPanel(title = "Unapprove")
           ),
@@ -174,12 +175,20 @@ ghqc_notify_server <- function(id, working_dir) {
         shinyjs::hide("to_commit_display")
       } else if (tab_type == "Approve") {
         # Approve: Show commit UI but hide diff checkbox, configure for single selection
-        shinyjs::hide("show_diff_wrap")  # No diff checkbox for approve
+        shinyjs::hide("show_diff_wrap") # No diff checkbox for approve
         shinyjs::show("commits_header")
         shinyjs::show("include_non_editing")
         shinyjs::show("commit_range_slider")
-        shinyjs::hide("from_commit_display")  # Single commit, so hide "from" display
-        shinyjs::show("to_commit_display")    # Show single commit selection
+        shinyjs::hide("from_commit_display") # Single commit, so hide "from" display
+        shinyjs::show("to_commit_display") # Show single commit selection
+      } else if (tab_type == "Review") {
+        # Review: Show commit UI with diff checkbox, single selection from commit to working dir
+        shinyjs::show("show_diff_wrap") # Show diff checkbox for review
+        shinyjs::show("commits_header")
+        shinyjs::show("include_non_editing")
+        shinyjs::show("commit_range_slider")
+        shinyjs::show("from_commit_display") # Show selected commit as "from"
+        shinyjs::hide("to_commit_display") # Hide "to" since it's working directory
       } else {
         # Notify Changes: Show all commit UI with range selection
         shinyjs::show("show_diff_wrap")
@@ -380,7 +389,7 @@ ghqc_notify_server <- function(id, working_dir) {
       # Configure UI based on selected tab
       if (input$type_tab == "Unapprove") {
         label <- "Include Open Issues"
-        default_value <- FALSE  # Default to closed issues only
+        default_value <- FALSE # Default to closed issues only
 
         # Configure commit UI for Unapprove (hide all)
         configure_commit_ui("Unapprove")
@@ -401,7 +410,7 @@ ghqc_notify_server <- function(id, working_dir) {
         iv$enable()
       } else if (input$type_tab == "Approve") {
         label <- "Include Closed Issues"
-        default_value <- FALSE  # Default to open issues only
+        default_value <- FALSE # Default to open issues only
 
         # Configure commit UI for Approve (single commit selection)
         configure_commit_ui("Approve")
@@ -424,10 +433,64 @@ ghqc_notify_server <- function(id, working_dir) {
 
         # Disable validator for Approve tab
         iv$disable()
+
+        # If we have a selected issue and were previously on Unapprove tab,
+        # we need to reload the commits since they were cleared
+        if (
+          !is.null(input$select_issue) &&
+            input$select_issue != "" &&
+            is.null(current_issue_commits())
+        ) {
+          # Trigger reloading of commits for the current issue
+          shiny::updateSelectizeInput(
+            session,
+            "select_issue",
+            selected = input$select_issue
+          )
+        }
+      } else if (input$type_tab == "Review") {
+        label <- "Include Closed Issues"
+        default_value <- FALSE # Default to open issues only
+
+        # Configure commit UI for Review (single selection from commit to working dir)
+        configure_commit_ui("Review")
+
+        # Update message field to be optional
+        shiny::updateTextAreaInput(
+          session,
+          "message",
+          label = "Message",
+          placeholder = "(Optional)"
+        )
+
+        # Update header text
+        output$commits_header <- shiny::renderUI({
+          shiny::h4(
+            "Select commit to compare against working directory:"
+          )
+        })
+
+        # Disable validator for Review tab
+        iv$disable()
+
+        # If we have a selected issue and were previously on Unapprove tab,
+        # we need to reload the commits since they were cleared
+        if (
+          !is.null(input$select_issue) &&
+            input$select_issue != "" &&
+            is.null(current_issue_commits())
+        ) {
+          # Trigger reloading of commits for the current issue
+          shiny::updateSelectizeInput(
+            session,
+            "select_issue",
+            selected = input$select_issue
+          )
+        }
       } else {
         # Notify Changes tab
         label <- "Include Closed Issues"
-        default_value <- FALSE  # Default to open issues only
+        default_value <- FALSE # Default to open issues only
 
         # Configure commit UI for Notify Changes (full range selection)
         configure_commit_ui("Notify Changes")
@@ -450,6 +513,21 @@ ghqc_notify_server <- function(id, working_dir) {
 
         # Disable validator for Notify Changes tab
         iv$disable()
+
+        # If we have a selected issue and were previously on Unapprove tab,
+        # we need to reload the commits since they were cleared
+        if (
+          !is.null(input$select_issue) &&
+            input$select_issue != "" &&
+            is.null(current_issue_commits())
+        ) {
+          # Trigger reloading of commits for the current issue
+          shiny::updateSelectizeInput(
+            session,
+            "select_issue",
+            selected = input$select_issue
+          )
+        }
       }
 
       shiny::updateCheckboxInput(
@@ -528,7 +606,10 @@ ghqc_notify_server <- function(id, working_dir) {
       shiny::req(input$select_milestone)
 
       # If "All Issues" is selected and we need closed milestones, load them
-      if (input$select_milestone == "All Issues" && isTRUE(input$include_closed_milestones)) {
+      if (
+        input$select_milestone == "All Issues" &&
+          isTRUE(input$include_closed_milestones)
+      ) {
         all_milestone_names <- milestone_df |> dplyr::pull(name)
         load_missing_milestones(all_milestone_names)
       }
@@ -713,13 +794,80 @@ ghqc_notify_server <- function(id, working_dir) {
         # Commits available - create timeline using module
         current_issue_commits(issue_commits)
 
-        # Set defaults
-        default_from <- substr(
-          issue_commits$hash[max(1, nrow(issue_commits) - 1)],
-          1,
-          7
-        )
-        default_to <- substr(issue_commits$hash[nrow(issue_commits)], 1, 7)
+        # Special handling for Review tab: validate HEAD commit
+        if (input$type_tab == "Review") {
+          # Get HEAD commit
+          head_commit <- tryCatch(
+            {
+              .catch(get_head_commit_impl(working_dir))
+            },
+            error = function(e) {
+              .le$debug("Error getting HEAD commit: {e$message}")
+              shiny::showModal(shiny::modalDialog(
+                title = shiny::tags$div(
+                  style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                  shiny::tags$div(
+                    shiny::modalButton("Return"),
+                    style = "flex: 0 0 auto;"
+                  ),
+                  shiny::tags$div(
+                    "Unable to Get HEAD Commit",
+                    style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+                  ),
+                  shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+                ),
+                glue::glue("Could not determine current HEAD commit: {e$message}"),
+                footer = NULL,
+                easyClose = TRUE
+              ))
+              return()
+            }
+          )
+
+          if (is.null(head_commit)) {
+            return()
+          }
+
+          # Check if HEAD commit exists in issue commits
+          head_short <- substr(head_commit, 1, 7)
+          .le$debug("HEAD commit: {head_commit} (short: {head_short})")
+          .le$debug("Issue commits: {paste(substr(issue_commits$hash, 1, 7), collapse=', ')}")
+          head_match <- issue_commits[substr(issue_commits$hash, 1, 7) == head_short, ]
+          .le$debug("HEAD match found: {nrow(head_match)} rows")
+
+          if (nrow(head_match) == 0) {
+            shiny::showModal(shiny::modalDialog(
+              title = shiny::tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                shiny::tags$div(
+                  shiny::modalButton("Return"),
+                  style = "flex: 0 0 auto;"
+                ),
+                shiny::tags$div(
+                  "HEAD Commit Not Found",
+                  style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+                ),
+                shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+              ),
+              glue::glue("The current HEAD commit ({head_short}) is not in the commit history for this file. You should only review changes when your working directory matches a commit that modified this file."),
+              footer = NULL,
+              easyClose = TRUE
+            ))
+            return()
+          }
+
+          # Set HEAD as default for Review tab
+          default_from <- head_short
+          default_to <- head_short
+        } else {
+          # Set defaults for other tabs
+          default_from <- substr(
+            issue_commits$hash[max(1, nrow(issue_commits) - 1)],
+            1,
+            7
+          )
+          default_to <- substr(issue_commits$hash[nrow(issue_commits)], 1, 7)
+        }
 
         output$commit_range_slider <- shiny::renderUI({
           commit_slider_ui(session$ns("commit_slider"))
@@ -740,11 +888,34 @@ ghqc_notify_server <- function(id, working_dir) {
               )
               current_issue_commits()
             } else {
-              # Show commits that either edit files OR have QC significance
+              # Show commits that either edit files OR have QC significance (including reviewed)
               rel_commits <- current_issue_commits()[
                 current_issue_commits()$edits_file == TRUE |
-                  current_issue_commits()$qc_class != "no_comment",
+                  current_issue_commits()$qc_class != "no_comment" |
+                  current_issue_commits()$reviewed == TRUE,
               ]
+
+              # For Review tab, ensure HEAD commit is always included (if it exists in the issue)
+              if (input$type_tab == "Review") {
+                head_commit_result <- tryCatch({
+                  .catch(get_head_commit_impl(working_dir))
+                }, error = function(e) NULL)
+
+                if (!is.null(head_commit_result)) {
+                  head_short <- substr(head_commit_result, 1, 7)
+                  head_in_issue <- current_issue_commits()[substr(current_issue_commits()$hash, 1, 7) == head_short, ]
+                  if (nrow(head_in_issue) > 0) {
+                    # Ensure HEAD commit is in rel_commits
+                    head_in_rel <- rel_commits[substr(rel_commits$hash, 1, 7) == head_short, ]
+                    if (nrow(head_in_rel) == 0) {
+                      .le$debug("Adding HEAD commit {head_short} to relevant commits for Review tab")
+                      rel_commits <- rbind(rel_commits, head_in_issue)
+                      # Re-order by position in original commits
+                      rel_commits <- rel_commits[order(match(rel_commits$hash, current_issue_commits()$hash)), ]
+                    }
+                  }
+                }
+              }
 
               .le$debug(
                 "Displaying {length(rel_commits)} relevant commits ({length(current_issue_commits())} available commits)"
@@ -753,7 +924,25 @@ ghqc_notify_server <- function(id, working_dir) {
               rel_commits
             }
           }),
-          reactive({ input$type_tab == "Approve" })
+          reactive({
+            input$type_tab == "Approve" || input$type_tab == "Review"
+          }),
+          reactive({
+            input$type_tab
+          }),
+          reactive({
+            # For Review tab, pass HEAD commit as default
+            if (input$type_tab == "Review") {
+              head_commit_result <- tryCatch({
+                .catch(get_head_commit_impl(working_dir))
+              }, error = function(e) NULL)
+
+              if (!is.null(head_commit_result)) {
+                return(substr(head_commit_result, 1, 7))
+              }
+            }
+            return(NULL)
+          })
         )
 
         # Store in reactive value for access elsewhere
@@ -855,9 +1044,9 @@ ghqc_notify_server <- function(id, working_dir) {
       # Extract filename from issue title
       filename <- selected_issue_info$name
 
-      # Skip git status validation for Unapprove tab (no files/commits involved)
-      if (input$type_tab == "Unapprove") {
-        # Unapprove doesn't need git status checks - proceed directly to preview
+      # Skip git status validation for Unapprove and Review tabs
+      if (input$type_tab == "Unapprove" || input$type_tab == "Review") {
+        # Unapprove doesn't need git status checks, Review expects modified files - proceed directly to preview
         ready_to_preview(TRUE)
       } else {
         # Get git status for the file (only for Approve and Notify Changes tabs)
@@ -1119,7 +1308,37 @@ ghqc_notify_server <- function(id, working_dir) {
 
           # Get full hash for approval
           to_commit <- to_commit_match$hash[1]
-          from_commit <- NULL  # Not needed for approval
+          from_commit <- NULL # Not needed for approval
+        } else if (input$type_tab == "Review") {
+          # Only validate from_commit for Review
+          from_commit_match <- commits_df[
+            substr(commits_df$hash, 1, 7) == from_commit_short,
+          ]
+
+          if (nrow(from_commit_match) == 0) {
+            shiny::showModal(shiny::modalDialog(
+              title = shiny::tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                shiny::tags$div(
+                  shiny::modalButton("Return"),
+                  style = "flex: 0 0 auto;"
+                ),
+                shiny::tags$div(
+                  "Commit Not Found",
+                  style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+                ),
+                shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+              ),
+              "Could not find the selected commit in the timeline.",
+              footer = NULL,
+              easyClose = TRUE
+            ))
+            return()
+          }
+
+          # Get full hash for review
+          from_commit <- from_commit_match$hash[1]
+          to_commit <- NULL # Not needed for review (compares to working directory)
         } else {
           # Validate both commits for Notify Changes
           from_commit_match <- commits_df[
@@ -1192,7 +1411,7 @@ ghqc_notify_server <- function(id, working_dir) {
             # Unapprove: only needs issue and message (reason)
             qc_object <- .catch(create_qc_unapproval_impl(
               fix_issue_ids(selected_issue),
-              message  # Required message becomes the reason
+              message # Required message becomes the reason
             ))
             qc_object$issue <- fix_issue_ids(qc_object$issue)
           } else if (input$type_tab == "Approve") {
@@ -1204,8 +1423,19 @@ ghqc_notify_server <- function(id, working_dir) {
             qc_object <- .catch(create_qc_approval_impl(
               fix_issue_ids(selected_issue),
               filename,
-              to_commit,  # Single commit for approval
+              to_commit, # Single commit for approval
               if (nchar(message) > 0) message else NULL
+            ))
+            qc_object$issue <- fix_issue_ids(qc_object$issue)
+          } else if (input$type_tab == "Review") {
+            # Review: needs issue, filename, single commit (from), message, and no_diff
+            qc_object <- .catch(create_qc_review_impl(
+              fix_issue_ids(selected_issue),
+              filename,
+              from_commit, # Single commit to compare against working dir
+              if (nchar(message) > 0) message else NULL,
+              !show_diff, # no_diff flag (inverse of show_diff)
+              working_dir
             ))
             qc_object$issue <- fix_issue_ids(qc_object$issue)
           } else {
@@ -1236,7 +1466,8 @@ ghqc_notify_server <- function(id, working_dir) {
           .le$debug("Error creating QC object: {e$message}")
 
           # Get appropriate error title based on tab
-          error_title <- switch(input$type_tab,
+          error_title <- switch(
+            input$type_tab,
             "Unapprove" = "QC Unapproval Error",
             "Approve" = "QC Approval Error",
             "QC Comment Error"
@@ -1274,6 +1505,8 @@ ghqc_notify_server <- function(id, working_dir) {
             .catch(get_qc_unapproval_body_html_impl(qc_object))
           } else if (input$type_tab == "Approve") {
             .catch(get_qc_approval_body_html_impl(qc_object, working_dir))
+          } else if (input$type_tab == "Review") {
+            .catch(get_qc_review_body_html_impl(qc_object, working_dir))
           } else {
             .catch(get_qc_comment_body_html_impl(qc_object, working_dir))
           }
@@ -1307,16 +1540,20 @@ ghqc_notify_server <- function(id, working_dir) {
       }
 
       # Get dynamic text based on tab type
-      modal_title <- switch(input$type_tab,
+      modal_title <- switch(
+        input$type_tab,
         "Unapprove" = "Preview QC Unapproval",
         "Approve" = "Preview QC Approval",
-        "Preview QC Comment"  # Default for Notify Changes
+        "Review" = "Preview QC Review",
+        "Preview QC Comment" # Default for Notify Changes
       )
 
-      button_text <- switch(input$type_tab,
+      button_text <- switch(
+        input$type_tab,
         "Unapprove" = "Post Unapproval",
         "Approve" = "Post Approval",
-        "Post Comment"  # Default for Notify Changes
+        "Review" = "Post Review",
+        "Post Comment" # Default for Notify Changes
       )
 
       # Show preview modal with HTML body
@@ -1388,6 +1625,9 @@ ghqc_notify_server <- function(id, working_dir) {
           } else if (input$type_tab == "Approve") {
             .le$info("Posting QC approval...")
             .catch(post_qc_approval_impl(qc_comment, working_dir))
+          } else if (input$type_tab == "Review") {
+            .le$info("Posting QC review...")
+            .catch(post_qc_review_impl(qc_comment, working_dir))
           } else {
             .le$info("Posting QC comment...")
             .catch(post_qc_comment_impl(qc_comment, working_dir))
