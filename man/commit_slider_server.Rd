@@ -4,7 +4,13 @@
 \alias{commit_slider_server}
 \title{Commit Range Slider Server}
 \usage{
-commit_slider_server(id, commits, single_select = reactive(FALSE))
+commit_slider_server(
+  id,
+  commits,
+  single_select = reactive(FALSE),
+  tab_type = reactive("Notify Changes"),
+  default_commit = reactive(NULL)
+)
 }
 \arguments{
 \item{id}{Module ID}
@@ -12,6 +18,10 @@ commit_slider_server(id, commits, single_select = reactive(FALSE))
 \item{commits}{Reactive data frame with columns: hash, message, qc_class, edits_file}
 
 \item{single_select}{Reactive logical, if TRUE shows single handle for single commit selection}
+
+\item{tab_type}{Reactive character, the current tab type for styling}
+
+\item{default_commit}{Reactive character, optional specific commit to use as default (short hash)}
 }
 \description{
 Commit Range Slider Server

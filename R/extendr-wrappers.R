@@ -34,9 +34,15 @@ get_qc_approval_body_html_impl <- function(r_qc_approval_robj, working_dir) .Cal
 
 post_qc_approval_impl <- function(r_qc_approval_robj, working_dir) .Call(wrap__post_qc_approval_impl, r_qc_approval_robj, working_dir)
 
+create_qc_review_impl <- function(issue_robj, filename, review_commit, message, no_diff, working_dir) .Call(wrap__create_qc_review_impl, issue_robj, filename, review_commit, message, no_diff, working_dir)
+
+get_qc_review_body_html_impl <- function(r_qc_review_robj, working_dir) .Call(wrap__get_qc_review_body_html_impl, r_qc_review_robj, working_dir)
+
+post_qc_review_impl <- function(r_qc_review_robj, working_dir) .Call(wrap__post_qc_review_impl, r_qc_review_robj, working_dir)
+
 create_qc_unapproval_impl <- function(issue_robj, reason) .Call(wrap__create_qc_unapproval_impl, issue_robj, reason)
 
-get_qc_unapproval_body_html_impl <- function(r_qc_unapproval_robj) .Call(wrap__get_qc_unapproval_body_html_impl, r_qc_unapproval_robj)
+get_qc_unapproval_body_html_impl <- function(r_qc_unapproval_robj, working_dir) .Call(wrap__get_qc_unapproval_body_html_impl, r_qc_unapproval_robj, working_dir)
 
 post_qc_unapproval_impl <- function(r_qc_unapproval_robj, working_dir) .Call(wrap__post_qc_unapproval_impl, r_qc_unapproval_robj, working_dir)
 
@@ -49,6 +55,8 @@ get_users_impl <- function(working_dir) .Call(wrap__get_users_impl, working_dir)
 get_issue_commits_impl <- function(working_dir, issue_robj) .Call(wrap__get_issue_commits_impl, working_dir, issue_robj)
 
 file_git_status_impl <- function(files, working_dir) .Call(wrap__file_git_status_impl, files, working_dir)
+
+get_head_commit_impl <- function(working_dir) .Call(wrap__get_head_commit_impl, working_dir)
 
 create_issues_impl <- function(milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir) .Call(wrap__create_issues_impl, milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir)
 
