@@ -13,11 +13,15 @@ ghqc_assign_app <- function(
       checklist_display_name <- get_checklist_display_name_impl(
         configuration
       )
-      .le$trace("Determined checklist display name to be: {checklist_display_name}")
+      .le$trace(
+        "Determined checklist display name to be: {checklist_display_name}"
+      )
       prepended_checklist_note <- get_prepended_checklist_note_impl(
         configuration
       )
-      .le$trace("Determined prepended checklist note to be: {prepended_checklist_note}")
+      .le$trace(
+        "Determined prepended checklist note to be: {prepended_checklist_note}"
+      )
 
       .le$info("Loading Repo Users...")
       repo_users <- .catch(get_users_impl(working_dir))
@@ -139,14 +143,7 @@ ghqc_assign_server <- function(
   .le$info("Fetching Milestones...")
   milestones <- get_milestones(working_dir)
 
-  milestone_df <- purrr::map_dfr(milestones, function(x) {
-    tibble::tibble(
-      name = x$title,
-      number = x$number,
-      open = identical(x$state, "open")
-    )
-  })
-
+  milestone_df <- create_safe_milestone_df(milestones)
   .le$debug(
     glue::glue(
       "Found {nrow(milestone_df)} milestones ({milestone_df |> dplyr::filter(open) |> nrow()} open)"
@@ -352,7 +349,9 @@ ghqc_assign_server <- function(
 
         list()
       } else {
-        .le$debug("Milestone {milestone$number} - '{milestone_input_rv()}' exists. Fetching issues...")
+        .le$debug(
+          "Milestone {milestone$number} - '{milestone_input_rv()}' exists. Fetching issues..."
+        )
 
         issues <- .catch(get_milestone_issues_impl(working_dir, milestone))
 
@@ -435,7 +434,9 @@ ghqc_assign_server <- function(
       shiny::req(checklists)
       shiny::req(input$checklist_name)
 
-      .le$debug("{capitalize(checklist_display_name)} selected for review: {input$checklist_name}")
+      .le$debug(
+        "{capitalize(checklist_display_name)} selected for review: {input$checklist_name}"
+      )
       checklist <- checklists[checklists$name == input$checklist_name, ]
       shiny::HTML(.catch(format_checklist_as_html_impl(checklist)))
     })

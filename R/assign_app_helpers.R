@@ -363,3 +363,59 @@ create_qc_issues <- function(
 
   shiny::showModal(modal_dialog)
 }
+
+#' Create a safe tibble with guaranteed schema
+#'
+#' Creates a tibble with the specified schema, either populated from data or
+#' empty with the correct column types if data is empty.
+#'
+#' @param data A list/vector of data to process, or NULL/empty
+#' @param schema A named list specifying column names and their empty types
+#'   (e.g., list(name = character(0), number = integer(0), open = logical(0)))
+#' @param map_fn A function to apply to each element of data to create a tibble row
+#'
+#' @return A tibble with guaranteed schema
+#' @examples
+#' \dontrun{
+#' # Safe milestone creation
+#' milestone_df <- safe_tibble_creation(
+#'   milestones,
+#'   schema = list(name = character(0), number = integer(0), open = logical(0)),
+#'   map_fn = function(x) tibble::tibble(
+#'     name = x$title,
+#'     number = x$number,
+#'     open = identical(x$state, "open")
+#'   )
+#' )
+#' }
+safe_tibble_creation <- function(data, schema, map_fn) {
+  if (length(data) == 0) {
+    do.call(tibble::tibble, schema)
+  } else {
+    purrr::map_dfr(data, map_fn)
+  }
+}
+
+#' Create a safe milestone dataframe
+#'
+#' Helper function specifically for creating milestone dataframes with consistent schema
+#'
+#' @param milestones List of milestone objects from GitHub API
+#' @return A tibble with columns: name, number, open
+create_safe_milestone_df <- function(milestones) {
+  safe_tibble_creation(
+    milestones,
+    schema = list(
+      name = character(0),
+      number = integer(0),
+      open = logical(0)
+    ),
+    map_fn = function(x) {
+      tibble::tibble(
+        name = x$title,
+        number = x$number,
+        open = identical(x$state, "open")
+      )
+    }
+  )
+}

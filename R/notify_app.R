@@ -202,13 +202,7 @@ ghqc_notify_server <- function(id, working_dir) {
 
     milestones <- get_milestones(working_dir)
 
-    milestone_df <- purrr::map_dfr(milestones, function(x) {
-      tibble::tibble(
-        name = x$title,
-        number = x$number,
-        open = identical(x$state, "open")
-      )
-    })
+    milestone_df <- create_safe_milestone_df(milestones)
 
     .le$debug(
       glue::glue(
@@ -889,11 +883,21 @@ ghqc_notify_server <- function(id, working_dir) {
               current_issue_commits()
             } else {
               # Show commits that either edit files OR have QC significance (including reviewed)
-              rel_commits <- current_issue_commits()[
-                current_issue_commits()$edits_file == TRUE |
-                  current_issue_commits()$qc_class != "no_comment" |
-                  current_issue_commits()$reviewed == TRUE,
-              ]
+              commits_data <- current_issue_commits()
+
+              # Defensive check: ensure required columns exist
+              required_columns <- c("edits_file", "qc_class", "reviewed")
+              if (is.null(commits_data) || nrow(commits_data) == 0 ||
+                  !all(required_columns %in% names(commits_data))) {
+                .le$warn("Commit data missing required columns, using all commits")
+                rel_commits <- commits_data
+              } else {
+                rel_commits <- commits_data[
+                  commits_data$edits_file == TRUE |
+                    commits_data$qc_class != "no_comment" |
+                    commits_data$reviewed == TRUE,
+                ]
+              }
 
               # For Review tab, ensure HEAD commit is always included (if it exists in the issue)
               if (input$type_tab == "Review") {
@@ -901,17 +905,17 @@ ghqc_notify_server <- function(id, working_dir) {
                   .catch(get_head_commit_impl(working_dir))
                 }, error = function(e) NULL)
 
-                if (!is.null(head_commit_result)) {
+                if (!is.null(head_commit_result) && "hash" %in% names(commits_data)) {
                   head_short <- substr(head_commit_result, 1, 7)
-                  head_in_issue <- current_issue_commits()[substr(current_issue_commits()$hash, 1, 7) == head_short, ]
-                  if (nrow(head_in_issue) > 0) {
+                  head_in_issue <- commits_data[substr(commits_data$hash, 1, 7) == head_short, ]
+                  if (nrow(head_in_issue) > 0 && "hash" %in% names(rel_commits)) {
                     # Ensure HEAD commit is in rel_commits
                     head_in_rel <- rel_commits[substr(rel_commits$hash, 1, 7) == head_short, ]
                     if (nrow(head_in_rel) == 0) {
                       .le$debug("Adding HEAD commit {head_short} to relevant commits for Review tab")
                       rel_commits <- rbind(rel_commits, head_in_issue)
                       # Re-order by position in original commits
-                      rel_commits <- rel_commits[order(match(rel_commits$hash, current_issue_commits()$hash)), ]
+                      rel_commits <- rel_commits[order(match(rel_commits$hash, commits_data$hash)), ]
                     }
                   }
                 }
@@ -1700,6 +1704,18 @@ ghqc_notify_server <- function(id, working_dir) {
 # takes in a list of milestones, with sublist issues and
 # returns a df with columns Milestone, Number, Name, Open, MilestoneNumber
 flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
+  # Handle empty input or empty milestone lists
+  if (length(multiple_milestone_issues) == 0 ||
+      all(lengths(multiple_milestone_issues) == 0)) {
+    return(tibble::tibble(
+      milestone = character(0),
+      milestone_number = numeric(0),
+      number = integer(0),
+      name = character(0),
+      open = logical(0)
+    ))
+  }
+
   purrr::imap_dfr(
     multiple_milestone_issues,
     function(milestone_issues, milestone_name) {
@@ -1712,7 +1728,7 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
         } else {
           # Fallback: extract number from milestone name if it follows a pattern
           # This handles cases where milestone name is like "v1.0", "Release 2.1", etc.
-          milestone_name_pattern <- stringr::str_implact(
+          milestone_name_pattern <- stringr::str_extract(
             milestone_name,
             "\\d+(\\.\\d+)*"
           )

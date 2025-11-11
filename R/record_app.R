@@ -117,13 +117,7 @@ ghqc_record_server <- function(
     .le$debug("Fetching Milestones...")
     milestones <- get_milestones(working_dir)
 
-    milestone_df <- purrr::map_dfr(milestones, function(x) {
-      tibble::tibble(
-        name = x$title,
-        number = x$number,
-        open = identical(x$state, "open")
-      )
-    })
+    milestone_df <- create_safe_milestone_df(milestones)
 
     .le$debug(
       glue::glue(
@@ -362,6 +356,17 @@ ghqc_record_server <- function(
     # Handle close button for result modal
     shiny::observeEvent(input$close_result_modal, {
       shiny::removeModal()
+    })
+
+    # Handle close button
+    shiny::observeEvent(input$close, {
+      shiny::stopApp()
+    })
+
+    # Handle reset button
+    shiny::observeEvent(input$reset, {
+      reset_triggered(TRUE)
+      session$reload()
     })
 
     validator$enable()
