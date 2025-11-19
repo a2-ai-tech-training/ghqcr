@@ -127,6 +127,11 @@ ghqc_archive_server <- function(
 
   branch <- .catch(get_branch_impl(working_dir))
 
+  local_commits <- .catch(get_branch_commits(working_dir, branch))
+  .le$debug(
+    "Found {local_commits$commit |> unique() |> length()} commits on branch '{branch}'"
+  )
+
   shiny::moduleServer(id, function(input, output, session) {
     reset_triggered <- shiny::reactiveVal(FALSE)
     session$onSessionEnded(function() {

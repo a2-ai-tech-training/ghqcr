@@ -19,6 +19,7 @@ extendr_module! {
     fn file_git_status_impl;
     fn get_head_commit_impl;
     fn get_branch_impl;
+    fn get_branch_commits;
 }
 
 #[extendr]
@@ -242,4 +243,40 @@ fn get_branch_impl(working_dir: &str) -> Result<String> {
     git_info
         .branch()
         .map_err(|e| Error::Other(format!("Failed to determine current branch: {e}")))
+}
+
+#[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
+struct RCommitRow {
+    commit: String,
+    message: String,
+    file: String,
+}
+
+#[extendr]
+fn get_branch_commits(
+    working_dir: &str,
+    branch: Nullable<String>,
+) -> Result<Dataframe<RCommitRow>> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    let branch = branch.into_option();
+
+    git_info
+        .commits(&branch)
+        .map_err(|e| {
+            Error::Other(format!(
+                "Failed to determine commits for branch: {branch:?}: {e}"
+            ))
+        })?
+        .iter()
+        .flat_map(|c| {
+            c.files.iter().map(|f| RCommitRow {
+                commit: c.commit.to_string(),
+                message: c.message.to_string(),
+                file: f.to_string_lossy().to_string(),
+            })
+        })
+        .collect::<Vec<_>>()
+        .into_dataframe()
 }

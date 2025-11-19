@@ -9,7 +9,7 @@ use std::{
 use extendr_api::{deserializer::from_robj, prelude::*, serializer::to_robj};
 use ghqctoolkit::{
     fetch_milestone_issues, get_milestone_issue_information, record, render, Configuration,
-    IssueInformation,
+    HttpImageDownloader, IssueInformation,
 };
 use octocrab::models::Milestone;
 
@@ -42,11 +42,15 @@ fn get_milestone_issue_information_impl(milestones: Robj, working_dir: String) -
 
     let cache = get_disk_cache(git_info).as_ref();
 
+    let image_downloader = HttpImageDownloader::new(git_info.auth_token().clone())
+        .map_err(|e| Error::Other(format!("Failed to create Http Image Downloader: {e}")))?;
+
     let milestone_issue_info = rt
         .block_on(get_milestone_issue_information(
             &milestone_issues,
             cache,
             git_info,
+            &image_downloader,
         ))
         .map_err(|e| {
             Error::Other(format!(

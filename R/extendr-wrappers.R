@@ -60,6 +60,8 @@ get_head_commit_impl <- function(working_dir) .Call(wrap__get_head_commit_impl, 
 
 get_branch_impl <- function(working_dir) .Call(wrap__get_branch_impl, working_dir)
 
+get_branch_commits <- function(working_dir, branch) .Call(wrap__get_branch_commits, working_dir, branch)
+
 create_issues_impl <- function(milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir) .Call(wrap__create_issues_impl, milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir)
 
 setup_configuration_impl <- function(config_dir, git) .Call(wrap__setup_configuration_impl, config_dir, git)
