@@ -74,7 +74,7 @@ fn get_multiple_milestone_issues_impl(working_dir: &str, milestones_robj: Robj) 
     let milestones: Vec<Milestone> = from_robj(&milestones_robj)?;
 
     // Create futures for parallel execution
-    let futures: Vec<_> = milestones
+    let futures = milestones
         .iter()
         .map(|milestone| {
             let milestone_title = milestone.title.clone();
@@ -83,7 +83,7 @@ fn get_multiple_milestone_issues_impl(working_dir: &str, milestones_robj: Robj) 
                 (milestone_title, issues)
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     // Execute all futures in parallel
     let results = rt.block_on(futures::future::join_all(futures));

@@ -1,3 +1,4 @@
+mod archive;
 mod configuration;
 mod create;
 mod git_utils;
@@ -123,6 +124,7 @@ extendr_module! {
     use create;
     use configuration;
     use record;
+    use archive;
     fn init_logger_impl;
     fn reset_logger_impl;
     fn log_message_impl;

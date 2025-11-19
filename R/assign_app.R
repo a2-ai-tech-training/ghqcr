@@ -185,7 +185,7 @@ ghqc_assign_server <- function(
     })
 
     # Get the open milestones and format when no existing milestone exist
-    open_milestones <- if (length(milestone_df) == 0) {
+    open_milestones <- if (is_empty(milestone_df)) {
       c()
     } else {
       milestone_df |>
@@ -194,7 +194,7 @@ ghqc_assign_server <- function(
         dplyr::pull(name)
     }
 
-    if (length(open_milestones) == 0) {
+    if (is_empty(open_milestones)) {
       shiny::updateSelectizeInput(
         session,
         "existing_milestone",
@@ -469,7 +469,7 @@ ghqc_assign_server <- function(
         current_files <- selected_files()
         previous_files <- rendered_files()
 
-        if (length(current_files) == 0) {
+        if (is_empty(current_files)) {
           # Remove all files and show message
           for (file in previous_files) {
             file_id <- session$ns(generate_input_id("file_row", file))
@@ -511,7 +511,7 @@ ghqc_assign_server <- function(
 
         # Add new files
         for (file in files_to_add) {
-          file_ui <- create_single_file_ui(
+          file_ui <- create_single_assign_file_ui(
             file,
             session$ns,
             checklists$name,
@@ -622,7 +622,7 @@ ghqc_assign_server <- function(
       # Check for duplicate issues in milestone
       existing_issues <- issues_in_milestone_rv()
       duplicate_files <- if (
-        !is.null(existing_issues) && length(existing_issues) > 0
+        !is_empty(existing_issues)
       ) {
         existing_file_paths <- sapply(existing_issues, function(issue) {
           issue$title

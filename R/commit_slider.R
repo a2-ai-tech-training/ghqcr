@@ -23,13 +23,19 @@ commit_slider_ui <- function(id) {
 #' @param single_select Reactive logical, if TRUE shows single handle for single commit selection
 #' @param tab_type Reactive character, the current tab type for styling
 #' @param default_commit Reactive character, optional specific commit to use as default (short hash)
-commit_slider_server <- function(id, commits, single_select = reactive(FALSE), tab_type = reactive("Notify Changes"), default_commit = reactive(NULL)) {
+commit_slider_server <- function(
+  id,
+  commits,
+  single_select = reactive(FALSE),
+  tab_type = reactive("Notify Changes"),
+  default_commit = reactive(NULL)
+) {
   shiny::moduleServer(id, function(input, output, session) {
     # Reactive slider UI - commits are already filtered by main app
     output$slider_ui <- shiny::renderUI({
       commits_df <- commits()
 
-      if (is.null(commits_df) || nrow(commits_df) == 0) {
+      if (is_empty(commits_df)) {
         return(
           shiny::div(
             shiny::p(
@@ -49,8 +55,8 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
       # Calculate dynamic minimum width based on number of commits
       # Reduced spacing to fit more commits: 7 chars * 6px per char + 8px spacing between commits
       chars_per_commit <- 7
-      px_per_char <- 6  # Reduced from 8 to 6
-      spacing_between_commits <- 8  # Reduced from 20 to 8
+      px_per_char <- 6 # Reduced from 8 to 6
+      spacing_between_commits <- 8 # Reduced from 20 to 8
       commit_width <- chars_per_commit * px_per_char
       total_commits_width <- length(commit_labels) * commit_width
       total_spacing_width <- max(
@@ -94,7 +100,7 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
           } else {
             default_to <- commit_labels[length(commit_labels)]
           }
-          default_from <- default_to  # Same commit for both (only "to" will be shown)
+          default_from <- default_to # Same commit for both (only "to" will be shown)
         }
       } else {
         # Range selection logic (existing)
@@ -108,7 +114,9 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
             default_to <- commit_labels[latest_non_no_comment]
 
             # Try to find a different file-changing commit
-            other_file_changing <- file_changing_commits[file_changing_commits != latest_non_no_comment]
+            other_file_changing <- file_changing_commits[
+              file_changing_commits != latest_non_no_comment
+            ]
             if (length(other_file_changing) > 0) {
               default_from <- commit_labels[max(other_file_changing)]
             } else {
@@ -213,12 +221,16 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
                   style = "margin: -8px auto 4px auto;",
                   # Review dot (top)
                   shiny::div(
-                    style = glue::glue("width: 8px; height: 8px; background: {review_color}; border-radius: 50%; margin: 0 auto 2px auto;"),
+                    style = glue::glue(
+                      "width: 8px; height: 8px; background: {review_color}; border-radius: 50%; margin: 0 auto 2px auto;"
+                    ),
                     title = "Reviewed"
                   ),
                   # Primary QC dot (bottom)
                   shiny::div(
-                    style = glue::glue("width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"),
+                    style = glue::glue(
+                      "width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"
+                    ),
                     title = glue::glue("QC Class: {qc_class}")
                   )
                 )
@@ -233,7 +245,9 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
                   ),
                   # Review dot (bottom)
                   shiny::div(
-                    style = glue::glue("width: 8px; height: 8px; background: {review_color}; border-radius: 50%; margin: 0 auto 0px auto;"),
+                    style = glue::glue(
+                      "width: 8px; height: 8px; background: {review_color}; border-radius: 50%; margin: 0 auto 0px auto;"
+                    ),
                     title = "Reviewed"
                   )
                 )
@@ -248,8 +262,14 @@ commit_slider_server <- function(id, commits, single_select = reactive(FALSE), t
                   ),
                   # Primary QC dot (bottom) or transparent
                   shiny::div(
-                    style = glue::glue("width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"),
-                    title = if (qc_class != "no_comment") glue::glue("QC Class: {qc_class}") else ""
+                    style = glue::glue(
+                      "width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"
+                    ),
+                    title = if (qc_class != "no_comment") {
+                      glue::glue("QC Class: {qc_class}")
+                    } else {
+                      ""
+                    }
                   )
                 )
               }

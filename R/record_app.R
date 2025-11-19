@@ -138,11 +138,11 @@ ghqc_record_server <- function(
 
       placeholder <- "Select Milestone(s)"
 
-      if (input$include_open || nrow(milestone_df) == 0) {
+      if (input$include_open || is_empty(milestone_df)) {
         milestone_options <- milestone_df |>
           dplyr::pull(name)
 
-        if (length(milestone_options) == 0) {
+        if (is_empty(milestone_options)) {
           placeholder <- "No Milestones Available"
         }
       } else {
@@ -150,7 +150,7 @@ ghqc_record_server <- function(
           dplyr::filter(!open) |>
           dplyr::pull(name)
 
-        if (length(milestone_options) == 0) {
+        if (is_empty(milestone_options)) {
           placeholder <- "No Closed Milestones"
         }
       }
@@ -416,7 +416,7 @@ show_result_modal <- function(session, result) {
 }
 
 get_pdf_name <- function(repo, milestone_names, just_tables) {
-  if (length(milestone_names) == 0) {
+  if (is_empty(milestone_names)) {
     return(glue::glue("{repo}.pdf"))
   }
 

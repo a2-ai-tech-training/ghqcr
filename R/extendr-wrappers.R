@@ -58,6 +58,8 @@ file_git_status_impl <- function(files, working_dir) .Call(wrap__file_git_status
 
 get_head_commit_impl <- function(working_dir) .Call(wrap__get_head_commit_impl, working_dir)
 
+get_branch_impl <- function(working_dir) .Call(wrap__get_branch_impl, working_dir)
+
 create_issues_impl <- function(milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir) .Call(wrap__create_issues_impl, milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir)
 
 setup_configuration_impl <- function(config_dir, git) .Call(wrap__setup_configuration_impl, config_dir, git)
@@ -81,6 +83,8 @@ record_issue_modal_check_impl <- function(milestone_issues, checklist_name) .Cal
 get_milestone_issue_information_impl <- function(milestones, working_dir) .Call(wrap__get_milestone_issue_information_impl, milestones, working_dir)
 
 generate_record_impl <- function(milestones, milestone_issues, configuration, record_path, working_dir, just_tables) .Call(wrap__generate_record_impl, milestones, milestone_issues, configuration, record_path, working_dir, just_tables)
+
+get_issue_df_impl <- function(issues_robj, working_dir) .Call(wrap__get_issue_df_impl, issues_robj, working_dir)
 
 
 # nolint end

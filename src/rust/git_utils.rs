@@ -18,6 +18,7 @@ extendr_module! {
     fn get_issue_commits_impl;
     fn file_git_status_impl;
     fn get_head_commit_impl;
+    fn get_branch_impl;
 }
 
 #[extendr]
@@ -231,4 +232,14 @@ fn get_head_commit_impl(working_dir: &str) -> Result<String> {
         Ok(commit) => Ok(commit.to_string()),
         Err(e) => Err(Error::Other(format!("Failed to get HEAD commit: {}", e))),
     }
+}
+
+#[extendr]
+fn get_branch_impl(working_dir: &str) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    git_info
+        .branch()
+        .map_err(|e| Error::Other(format!("Failed to determine current branch: {e}")))
 }
