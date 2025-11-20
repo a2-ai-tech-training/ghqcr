@@ -60,7 +60,7 @@ get_head_commit_impl <- function(working_dir) .Call(wrap__get_head_commit_impl, 
 
 get_branch_impl <- function(working_dir) .Call(wrap__get_branch_impl, working_dir)
 
-get_branch_commits <- function(working_dir, branch) .Call(wrap__get_branch_commits, working_dir, branch)
+get_branch_commits <- function(working_dir, branch = NULL) .Call(wrap__get_branch_commits, working_dir, branch)
 
 create_issues_impl <- function(milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir) .Call(wrap__create_issues_impl, milestone_name, description, file_data_robj, milestones_robj, prepended_checklist_note, working_dir)
 
@@ -86,7 +86,7 @@ get_milestone_issue_information_impl <- function(milestones, working_dir) .Call(
 
 generate_record_impl <- function(milestones, milestone_issues, configuration, record_path, working_dir, just_tables) .Call(wrap__generate_record_impl, milestones, milestone_issues, configuration, record_path, working_dir, just_tables)
 
-get_issue_df_impl <- function(issues_robj, working_dir) .Call(wrap__get_issue_df_impl, issues_robj, working_dir)
+get_issue_df_impl <- function(issue_robj, working_dir) .Call(wrap__get_issue_df_impl, issue_robj, working_dir)
 
 
 # nolint end

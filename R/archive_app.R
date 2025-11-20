@@ -24,17 +24,28 @@ ghqc_archive_ui <- function(id) {
       shiny::tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "ghqcr/css/styles.css"
+        href = "ghqc/css/styles.css"
       ),
-      shiny::tags$script(type = "module", src = "ghqcr/js/adjust_grid.js"),
+      shiny::tags$script(type = "module", src = "ghqc/js/adjust_grid.js"),
       shiny::tags$script(
         type = "module",
-        src = "ghqcr/js/toggle_sidebar.js"
+        src = "ghqc/js/toggle_sidebar.js"
       ),
       shiny::tags$style(shiny::HTML(
         "
     ::placeholder {
       color: #8e8e8e; /* match colors of placeholders */
+    }
+
+    /* Fix transparent overlay issue */
+    .mini-content {
+      background: transparent !important;
+      position: relative !important;
+    }
+
+    .mini-content::before,
+    .mini-content::after {
+      display: none !important;
     }
   "
       ))
@@ -54,7 +65,7 @@ ghqc_archive_ui <- function(id) {
           shiny::div(
             style = "position: relative; flex-shrink: 0; width: 50px; height: 50px;",
             shiny::tags$img(
-              src = "ghqcr/ghqc_hex.png",
+              src = "ghqc/ghqc_hex.png",
               class = "logo-img",
               style = "height: 46px; !important;"
             ) # this is important to ensure style priority so logo is the correct size
@@ -109,7 +120,10 @@ ghqc_archive_server <- function(
   working_dir_rv <- shiny::reactive(working_dir)
   shiny::observe({
     shiny::req(working_dir)
-    waiter::waiter_hide()
+    # Ensure waiter is hidden - try multiple approaches for reliability
+    try(waiter::waiter_hide(), silent = TRUE)
+    # Also try hiding any specific waiter on main_container
+    try(waiter::waiter_hide(id = "main_container"), silent = TRUE)
   })
   selected_files <- treeNavigatorServer(
     id,
@@ -127,12 +141,23 @@ ghqc_archive_server <- function(
 
   branch <- .catch(get_branch_impl(working_dir))
 
-  local_commits <- .catch(get_branch_commits(working_dir, branch))
+  local_commits <- .catch(get_branch_commits(working_dir))
   .le$debug(
     "Found {local_commits$commit |> unique() |> length()} commits on branch '{branch}'"
   )
 
+  # In-memory cache for issue data to avoid re-fetching
+  cached_issues <- shiny::reactiveValues()
+
   shiny::moduleServer(id, function(input, output, session) {
+    # Additional waiter hide attempt at module initialization
+    shiny::onFlush(
+      function() {
+        try(waiter::waiter_hide(), silent = TRUE)
+      },
+      once = TRUE
+    )
+
     reset_triggered <- shiny::reactiveVal(FALSE)
     session$onSessionEnded(function() {
       if (!isTRUE(shiny::isolate(reset_triggered))) {
@@ -288,6 +313,9 @@ ghqc_archive_server <- function(
     shiny::observeEvent(
       input$selected_milestones,
       {
+        .le$trace(
+          "User changed the selected milestones: {paste0(input$selected_milestones, collapse = ', ')}"
+        )
         shiny::req(!custom_archive_name())
 
         # Safely extract selected milestones, handling case where input might be an environment
@@ -554,6 +582,14 @@ Deselecting the **Include Open Issues** checkbox
       }
     )
 
+    # Create static container for dynamic file content (like assign_app)
+    output$main_panel_dynamic <- shiny::renderUI({
+      shiny::div(
+        id = session$ns("files_container"),
+        class = "grid-container-depth-0"
+      )
+    })
+
     rendered_files <- shiny::reactiveVal(c())
     shiny::observeEvent(
       archive_files(),
@@ -567,7 +603,6 @@ Deselecting the **Include Open Issues** checkbox
             "Rendering {length(files_to_add)} ui rows for: {paste(files_to_add, collapse = ', ')}"
           )
         }
-        rendered_files(archive_files()$name)
 
         if (!is_empty(files_to_remove)) {
           .le$info(
@@ -579,6 +614,13 @@ Deselecting the **Include Open Issues** checkbox
           milestone_id <- generate_input_id("milestone", file)
           row_id <- generate_input_id("file_row", file) |> session$ns()
           attr_selector <- glue::glue("[id='{row_id}']")
+
+          # Remove milestone observer for this file
+          if (!is.null(milestone_observers[[file]])) {
+            milestone_observers[[file]]$destroy()
+            milestone_observers[[file]] <- NULL
+            .le$debug("Removed milestone observer for file: {file}")
+          }
 
           shiny::updateSelectizeInput(
             session,
@@ -600,11 +642,56 @@ Deselecting the **Include Open Issues** checkbox
             session$ns
           )
           shiny::insertUI(
-            selector = paste0("#", session$ns("main_panel_dynamic")),
+            selector = paste0("#", session$ns("files_container")),
             where = "beforeEnd",
             ui = file_ui
           )
+
+          # Create milestone observer for this file after UI is inserted
+          # Use local() to properly capture the file variable
+          local({
+            current_file_name <- file
+            later::later(
+              function() {
+                milestone_input_id <- generate_input_id(
+                  "milestones",
+                  current_file_name
+                )
+
+                # Create observer for this file's milestone selection
+                observer <- shiny::observeEvent(
+                  input[[milestone_input_id]],
+                  {
+                    milestone_value <- input[[milestone_input_id]]
+                    .le$debug(
+                      "Milestone for '{current_file_name}' changed: {milestone_value}"
+                    )
+
+                    update_commit_options(
+                      session,
+                      current_file_name,
+                      milestone_value,
+                      local_commits,
+                      cached_issues,
+                      loaded_issues(),
+                      flattened_loaded_issues(),
+                      working_dir
+                    )
+                  },
+                  ignoreNULL = FALSE,
+                  ignoreInit = FALSE
+                )
+
+                milestone_observers[[current_file_name]] <- observer
+                .le$debug(
+                  "Created milestone observer for file: {current_file_name}"
+                )
+              },
+              delay = 0.1
+            )
+          })
         }
+        rendered_files(archive_files()$name)
       },
       ignoreInit = TRUE
     )
@@ -644,7 +731,101 @@ Deselecting the **Include Open Issues** checkbox
       },
       ignoreInit = TRUE
     )
+
+    # Keep track of milestone observers to avoid duplicates
+    milestone_observers <- shiny::reactiveValues()
   })
+}
+
+update_commit_options <- function(
+  session,
+  file_name,
+  milestone_value,
+  local_commits,
+  cached_issues,
+  loaded_issues_data,
+  flattened_issues,
+  working_dir
+) {
+  commit_input_id <- generate_input_id("commits", file_name)
+
+  if (is.null(milestone_value) || milestone_value == "") {
+    # No milestone selected - show all commits for this file
+    commit_data <- get_commits_for_file(local_commits, file_name)
+
+    # Add empty choice at beginning to prevent auto-selection
+
+    shiny::updateSelectizeInput(
+      session,
+      commit_input_id,
+      choices = commit_data$choices,
+      selected = "",
+      options = list(
+        placeholder = if (length(commit_data$choices) == 0) {
+          "No commits found for file"
+        } else {
+          "Select commit (required)"
+        }
+      )
+    )
+  } else {
+    # Milestone selected - find issue and get latest commit
+    # Find the issue number for this file and milestone
+    issue_info <- flattened_issues |>
+      dplyr::filter(name == file_name, milestone == milestone_value)
+
+    if (nrow(issue_info) == 0) {
+      .le$warn(
+        "Could not find issue for file '{file_name}' in milestone '{milestone_value}'"
+      )
+      shiny::updateSelectizeInput(
+        session,
+        commit_input_id,
+        choices = character(0),
+        selected = NULL,
+        options = list(placeholder = "Issue not found")
+      )
+      return()
+    }
+
+    issue_number <- issue_info$number[1]
+    latest_commit_info <- get_latest_commit_from_issue(
+      issue_number,
+      cached_issues,
+      loaded_issues_data,
+      working_dir
+    )
+
+    if (is.null(latest_commit_info)) {
+      .le$warn("Could not retrieve commit for issue #{issue_number}")
+      shiny::updateSelectizeInput(
+        session,
+        commit_input_id,
+        choices = character(0),
+        selected = NULL,
+        options = list(placeholder = "Commit not found")
+      )
+      return()
+    }
+
+    # Create a single choice with the latest commit using message from get_issue_df_impl
+    commit_display <- format_commit_choice(
+      latest_commit_info$commit,
+      latest_commit_info$message
+    )
+    commit_choice <- latest_commit_info$commit
+    names(commit_choice) <- commit_display
+
+    shiny::updateSelectizeInput(
+      session,
+      commit_input_id,
+      choices = commit_choice,
+      selected = latest_commit_info$commit,
+      options = list(
+        placeholder = "Commit selected"
+      )
+    )
+  }
 }
 
 update_milestone_options <- function(
@@ -737,6 +918,91 @@ sort_milestones_by_number <- function(milestone_names, milestone_df) {
 
   # Return sorted milestones, then missing ones, then empty strings
   c(sorted_milestones, missing_milestones, empty_strings)
+}
+
+# Helper functions for commit processing
+format_commit_choice <- function(commit_hash, message) {
+  # Take first 7 characters of hash and truncate message if needed
+  short_hash <- substr(commit_hash, 1, 7)
+  truncated_message <- if (nchar(message) > 60) {
+    paste0(substr(message, 1, 57), "...")
+  } else {
+    message
+  }
+  paste0(short_hash, " - ", truncated_message)
+}
+
+get_commits_for_file <- function(local_commits, file_name) {
+  # Filter commits that changed the specific file
+  file_commits <- local_commits |>
+    dplyr::filter(file == file_name) |>
+    dplyr::arrange(dplyr::desc(dplyr::row_number())) # Most recent first
+
+  if (nrow(file_commits) == 0) {
+    return(list(choices = character(0), values = character(0)))
+  }
+
+  # Format choices and return both display and values
+  display_names <- purrr::map2_chr(
+    file_commits$commit,
+    file_commits$message,
+    format_commit_choice
+  )
+  choices <- file_commits$commit
+  names(choices) <- display_names
+
+  list(choices = choices, values = file_commits$commit)
+}
+
+find_issue_in_loaded_issues <- function(issue_number, loaded_issues_data) {
+  # Search through all milestone issue lists to find the specific issue
+  for (milestone_issues in loaded_issues_data) {
+    for (issue in milestone_issues) {
+      if (!is.null(issue$number) && issue$number == issue_number) {
+        return(issue)
+      }
+    }
+  }
+  return(NULL)
+}
+
+get_latest_commit_from_issue <- function(
+  issue_number,
+  cached_issues,
+  loaded_issues_data,
+  working_dir
+) {
+  # Check cache first
+  cache_key <- as.character(issue_number)
+  if (!is.null(cached_issues[[cache_key]])) {
+    .le$debug("Using cached issue data for issue #{issue_number}")
+    issue_data <- cached_issues[[cache_key]]
+  } else {
+    .le$debug("Fetching issue data for issue #{issue_number}")
+
+    # Find the full issue object in loaded_issues
+    full_issue <- find_issue_in_loaded_issues(issue_number, loaded_issues_data)
+    if (is.null(full_issue)) {
+      .le$warn("Could not find issue #{issue_number} in loaded_issues")
+      return(NULL)
+    }
+
+    # Call get_issue_df_impl with the full issue object
+    issue_data <- get_issue_df_impl(full_issue, working_dir)
+    # Cache the result
+    cached_issues[[cache_key]] <- issue_data
+  }
+
+  # Extract the latest commit info (assuming it's the first/most recent in the data)
+  if (is_empty(issue_data)) {
+    return(NULL)
+  }
+
+  # Return both commit hash and message
+  list(
+    commit = issue_data$commit[1],
+    message = issue_data$message[1]
+  )
 }
 
 create_single_archive_file_ui <- function(

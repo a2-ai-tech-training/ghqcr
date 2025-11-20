@@ -255,7 +255,7 @@ struct RCommitRow {
 #[extendr]
 fn get_branch_commits(
     working_dir: &str,
-    branch: Nullable<String>,
+    #[default = "NULL"] branch: Nullable<String>,
 ) -> Result<Dataframe<RCommitRow>> {
     let cached_git_info = get_cached_git_info(working_dir)?;
     let git_info = cached_git_info.as_ref();

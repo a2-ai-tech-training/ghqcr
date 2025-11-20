@@ -1,4 +1,4 @@
-use extendr_api::{deserializer::from_robj, prelude::*};
+use extendr_api::{deserializer::from_robj, prelude::*, IntoRobj};
 use ghqctoolkit::IssueThread;
 use octocrab::models::issues::Issue;
 
@@ -9,16 +9,17 @@ extendr_module! {
     fn get_issue_df_impl;
 }
 
-#[derive(Debug, Clone, IntoDataFrameRow)]
-struct RIssueRow {
+#[derive(Debug, Clone, IntoRobj)]
+struct IssueLatestCommit {
     file: String,
-    milestone: String,
     commit: String,
+    message: String,
     state: String,
 }
 
-impl RIssueRow {
-    fn from_issue_thread(issue_thread: IssueThread, milestone: String) -> Result<Self> {
+impl TryFrom<IssueThread> for IssueLatestCommit {
+    type Error = extendr_api::Error;
+    fn try_from(issue_thread: IssueThread) -> std::result::Result<Self, Self::Error> {
         let commit = match issue_thread.latest_commit() {
             Some(latest_commit) => issue_thread
                 .commits
@@ -28,14 +29,14 @@ impl RIssueRow {
         };
 
         match commit {
-            Some(c) => Ok(RIssueRow {
+            Some(c) => Ok(Self {
                 file: issue_thread.file.to_string_lossy().to_string(),
-                milestone,
                 commit: c.hash.to_string(),
+                message: c.message.to_string(),
                 state: c.state.to_string(),
             }),
             None => Err(Error::Other(format!(
-                "Failed to find a commit for {} in {milestone}",
+                "Failed to find a commit for {}",
                 issue_thread.file.display()
             ))),
         }
@@ -43,50 +44,18 @@ impl RIssueRow {
 }
 
 #[extendr]
-fn get_issue_df_impl(issues_robj: Robj, working_dir: &str) -> Result<Dataframe<RIssueRow>> {
-    let issues: Vec<Issue> = from_robj(&issues_robj)?;
+fn get_issue_df_impl(issue_robj: Robj, working_dir: &str) -> Result<IssueLatestCommit> {
+    let issue: Issue = from_robj(&issue_robj)?;
     let cached_git_info = get_cached_git_info(working_dir)?;
     let git_info = cached_git_info.as_ref();
     let cache = get_disk_cache(git_info);
-    let issue_thread_futures = issues
-        .iter()
-        .map(|issue| async move { IssueThread::from_issue(&issue, cache.as_ref(), git_info).await })
-        .collect::<Vec<_>>();
-
     let rt = get_rt();
-    let thread_results = rt.block_on(futures::future::join_all(issue_thread_futures));
-    let mut err = Vec::new();
-    let mut df = Vec::new();
-    for (issue, thread_result) in issues.iter().zip(thread_results) {
-        let Some(milestone) = &issue.milestone else {
-            err.push(format!(
-                "Issue #{} - {} does not have an associated milestone",
-                issue.number, issue.title
-            ));
-            continue;
-        };
-        match thread_result {
-            Ok(issue_thread) => {
-                match RIssueRow::from_issue_thread(issue_thread, milestone.title.to_string()) {
-                    Ok(row) => df.push(row),
-                    Err(e) => err.push(e.to_string()),
-                }
-            }
-            Err(e) => {
-                err.push(format!(
-                    "Failed to get issue thread for {} in {}: {e}",
-                    issue.title, milestone.title
-                ));
-            }
-        }
-    }
 
-    if !err.is_empty() {
-        return Err(Error::Other(format!(
-            "Failed to get all required issue data due to: \n- {}",
-            err.join("\n- ")
-        )));
+    match rt.block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info)) {
+        Ok(t) => t.try_into(),
+        Err(e) => Err(Error::Other(format!(
+            "Failed to get issue thread for #{} - {}: {e}",
+            issue.number, issue.title
+        ))),
     }
-
-    df.into_dataframe()
 }
