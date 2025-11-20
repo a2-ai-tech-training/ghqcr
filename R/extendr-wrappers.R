@@ -4,10 +4,10 @@
 
 #
 # This file was created with the following call:
-#   .Call("wrap__make_ghqcr_wrappers", use_symbols = TRUE, package_name = "ghqcr")
+#   .Call("wrap__make_ghqc_wrappers", use_symbols = TRUE, package_name = "ghqc")
 
 #' @usage NULL
-#' @useDynLib ghqcr, .registration = TRUE
+#' @useDynLib ghqc, .registration = TRUE
 NULL
 
 init_logger_impl <- function() invisible(.Call(wrap__init_logger_impl))

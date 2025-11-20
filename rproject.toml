@@ -1,7 +1,7 @@
 use_lockfile = false
 
 [project]
-name = "ghqcr"
+name = "ghqc"
 r_version = "4.4"
 
 repositories = [
@@ -11,5 +11,5 @@ repositories = [
 dependencies = [
     "devtools",
     "rextendr",
-    { name = "ghqcr", path = ".", install_suggestions = true, dependencies_only = true },
+    { name = "ghqc", path = ".", install_suggestions = true, dependencies_only = true },
 ]

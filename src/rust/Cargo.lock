@@ -681,7 +681,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ghqcr"
+name = "ghqc"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -700,6 +700,7 @@ dependencies = [
 [[package]]
 name = "ghqctoolkit"
 version = "0.1.0"
+source = "git+https://github.com/a2-ai/ghqctoolkit#436de0bf71f4812c1f3d3b7bdd31487bfdb5538a"
 dependencies = [
  "base64",
  "calamine",

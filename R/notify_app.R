@@ -1,3 +1,8 @@
+#' @export
+#' @description
+#' Launches the notify app into the foreground for authors to comment on updates made to the script,
+#' reviewers to comment saved, uncommitted, in-line diffs, and approve and unapprove the issue.
+#'
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
     ui = ghqc_notify_ui(id = "ghqc_notify_app"),
@@ -21,7 +26,7 @@ ghqc_notify_ui <- function(id) {
       shiny::tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "ghqcr/css/styles.css"
+        href = "ghqc/css/styles.css"
       ),
       shiny::tags$style(
         HTML(
@@ -64,7 +69,7 @@ ghqc_notify_ui <- function(id) {
           shiny::div(
             style = "position: relative; flex-shrink: 0; width: 50px; height: 50px;",
             shiny::tags$img(
-              src = "ghqcr/ghqc_hex.png",
+              src = "ghqc/ghqc_hex.png",
               class = "logo-img",
               style = "height: 46px; !important;"
             ) # this is important to ensure style priority so logo is the correct size
@@ -810,7 +815,9 @@ ghqc_notify_server <- function(id, working_dir) {
                   ),
                   shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
                 ),
-                glue::glue("Could not determine current HEAD commit: {e$message}"),
+                glue::glue(
+                  "Could not determine current HEAD commit: {e$message}"
+                ),
                 footer = NULL,
                 easyClose = TRUE
               ))
@@ -825,8 +832,12 @@ ghqc_notify_server <- function(id, working_dir) {
           # Check if HEAD commit exists in issue commits
           head_short <- substr(head_commit, 1, 7)
           .le$debug("HEAD commit: {head_commit} (short: {head_short})")
-          .le$debug("Issue commits: {paste(substr(issue_commits$hash, 1, 7), collapse=', ')}")
-          head_match <- issue_commits[substr(issue_commits$hash, 1, 7) == head_short, ]
+          .le$debug(
+            "Issue commits: {paste(substr(issue_commits$hash, 1, 7), collapse=', ')}"
+          )
+          head_match <- issue_commits[
+            substr(issue_commits$hash, 1, 7) == head_short,
+          ]
           .le$debug("HEAD match found: {nrow(head_match)} rows")
 
           if (nrow(head_match) == 0) {
@@ -843,7 +854,9 @@ ghqc_notify_server <- function(id, working_dir) {
                 ),
                 shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
               ),
-              glue::glue("The current HEAD commit ({head_short}) is not in the commit history for this file. You should only review changes when your working directory matches a commit that modified this file."),
+              glue::glue(
+                "The current HEAD commit ({head_short}) is not in the commit history for this file. You should only review changes when your working directory matches a commit that modified this file."
+              ),
               footer = NULL,
               easyClose = TRUE
             ))
@@ -887,9 +900,14 @@ ghqc_notify_server <- function(id, working_dir) {
 
               # Defensive check: ensure required columns exist
               required_columns <- c("edits_file", "qc_class", "reviewed")
-              if (is.null(commits_data) || nrow(commits_data) == 0 ||
-                  !all(required_columns %in% names(commits_data))) {
-                .le$warn("Commit data missing required columns, using all commits")
+              if (
+                is.null(commits_data) ||
+                  nrow(commits_data) == 0 ||
+                  !all(required_columns %in% names(commits_data))
+              ) {
+                .le$warn(
+                  "Commit data missing required columns, using all commits"
+                )
                 rel_commits <- commits_data
               } else {
                 rel_commits <- commits_data[
@@ -901,21 +919,37 @@ ghqc_notify_server <- function(id, working_dir) {
 
               # For Review tab, ensure HEAD commit is always included (if it exists in the issue)
               if (input$type_tab == "Review") {
-                head_commit_result <- tryCatch({
-                  .catch(get_head_commit_impl(working_dir))
-                }, error = function(e) NULL)
+                head_commit_result <- tryCatch(
+                  {
+                    .catch(get_head_commit_impl(working_dir))
+                  },
+                  error = function(e) NULL
+                )
 
-                if (!is.null(head_commit_result) && "hash" %in% names(commits_data)) {
+                if (
+                  !is.null(head_commit_result) &&
+                    "hash" %in% names(commits_data)
+                ) {
                   head_short <- substr(head_commit_result, 1, 7)
-                  head_in_issue <- commits_data[substr(commits_data$hash, 1, 7) == head_short, ]
-                  if (nrow(head_in_issue) > 0 && "hash" %in% names(rel_commits)) {
+                  head_in_issue <- commits_data[
+                    substr(commits_data$hash, 1, 7) == head_short,
+                  ]
+                  if (
+                    nrow(head_in_issue) > 0 && "hash" %in% names(rel_commits)
+                  ) {
                     # Ensure HEAD commit is in rel_commits
-                    head_in_rel <- rel_commits[substr(rel_commits$hash, 1, 7) == head_short, ]
+                    head_in_rel <- rel_commits[
+                      substr(rel_commits$hash, 1, 7) == head_short,
+                    ]
                     if (nrow(head_in_rel) == 0) {
-                      .le$debug("Adding HEAD commit {head_short} to relevant commits for Review tab")
+                      .le$debug(
+                        "Adding HEAD commit {head_short} to relevant commits for Review tab"
+                      )
                       rel_commits <- rbind(rel_commits, head_in_issue)
                       # Re-order by position in original commits
-                      rel_commits <- rel_commits[order(match(rel_commits$hash, commits_data$hash)), ]
+                      rel_commits <- rel_commits[
+                        order(match(rel_commits$hash, commits_data$hash)),
+                      ]
                     }
                   }
                 }
@@ -937,9 +971,12 @@ ghqc_notify_server <- function(id, working_dir) {
           reactive({
             # For Review tab, pass HEAD commit as default
             if (input$type_tab == "Review") {
-              head_commit_result <- tryCatch({
-                .catch(get_head_commit_impl(working_dir))
-              }, error = function(e) NULL)
+              head_commit_result <- tryCatch(
+                {
+                  .catch(get_head_commit_impl(working_dir))
+                },
+                error = function(e) NULL
+              )
 
               if (!is.null(head_commit_result)) {
                 return(substr(head_commit_result, 1, 7))
@@ -1705,8 +1742,10 @@ ghqc_notify_server <- function(id, working_dir) {
 # returns a df with columns Milestone, Number, Name, Open, MilestoneNumber
 flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
   # Handle empty input or empty milestone lists
-  if (length(multiple_milestone_issues) == 0 ||
-      all(lengths(multiple_milestone_issues) == 0)) {
+  if (
+    length(multiple_milestone_issues) == 0 ||
+      all(lengths(multiple_milestone_issues) == 0)
+  ) {
     return(tibble::tibble(
       milestone = character(0),
       milestone_number = numeric(0),
