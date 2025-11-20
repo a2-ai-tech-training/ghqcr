@@ -1,7 +1,7 @@
 TARGET_DIR = ./rust/target
 LIBDIR = $(TARGET_DIR)/@LIBDIR@
-STATLIB = $(LIBDIR)/libghqcr.a
-PKG_LIBS = -L$(LIBDIR) -lghqcr
+STATLIB = $(LIBDIR)/libghqc.a
+PKG_LIBS = -L$(LIBDIR) -lghqc
 
 all: $(SHLIB) rust_clean
 

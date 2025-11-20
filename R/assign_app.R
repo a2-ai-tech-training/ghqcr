@@ -1,3 +1,7 @@
+#' @export
+#' @description
+#' Launches the Assign App into the foreground
+#'
 ghqc_assign_app <- function(
   working_dir = here::here(),
   config_dir = NULL
@@ -58,17 +62,16 @@ ghqc_assign_ui <- function(id) {
   ui <- miniUI::miniPage(
     waiter::use_waiter(),
     shinyjs::useShinyjs(),
-    # tags$head(tags$style(HTML(brio::read_file(system.file("css/styles.css", package = "ghqcr"))))),
     shiny::tags$head(
       shiny::tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "ghqcr/css/styles.css"
+        href = "ghqc/css/styles.css"
       ),
-      shiny::tags$script(type = "module", src = "ghqcr/js/adjust_grid.js"),
+      shiny::tags$script(type = "module", src = "ghqc/js/adjust_grid.js"),
       shiny::tags$script(
         type = "module",
-        src = "ghqcr/js/toggle_sidebar.js"
+        src = "ghqc/js/toggle_sidebar.js"
       ),
       shiny::tags$style(shiny::HTML(
         "
@@ -93,7 +96,7 @@ ghqc_assign_ui <- function(id) {
           shiny::div(
             style = "position: relative; flex-shrink: 0; width: 50px; height: 50px;",
             shiny::tags$img(
-              src = "ghqcr/ghqc_hex.png",
+              src = "ghqc/ghqc_hex.png",
               class = "logo-img",
               style = "height: 46px; !important;"
             ) # this is important to ensure style priority so logo is the correct size
