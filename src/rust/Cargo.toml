@@ -1,5 +1,5 @@
 [package]
-name = 'ghqcr'
+name = 'ghqc'
 publish = false
 version = '0.1.0'
 edition = '2021'
@@ -7,12 +7,12 @@ rust-version = '1.65'
 
 [lib]
 crate-type = [ 'staticlib' ]
-name = 'ghqcr'
+name = 'ghqc'
 path = "lib.rs"
 
 [dependencies]
 extendr-api = { version = "0.8.1", features = ["result_condition", "serde"] }
-ghqctoolkit = { path = "/Users/wescummings/projects/ghqc/ghqctoolkit" }
+ghqctoolkit = { git = "https://github.com/a2-ai/ghqctoolkit", branch = "record_upgrade" }
 gix = { version = "0.73", default-features = false }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 anyhow = "1.0"

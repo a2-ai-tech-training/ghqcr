@@ -28,7 +28,7 @@ fn init_logger_impl() {
     // All other crates should be OFF
     builder.filter_level(log::LevelFilter::Off);
 
-    // Get the log level for ghqcr and ghqctoolkit (default to INFO if not set)
+    // Get the log level for ghqc and ghqctoolkit (default to INFO if not set)
     let ghqc_level = match std::env::var("GHQC_LOG_LEVEL") {
         Ok(level_str) => {
             match level_str.to_uppercase().as_str() {
@@ -46,7 +46,7 @@ fn init_logger_impl() {
     // Set levels for our modules
     builder
         .filter_module("ghqctoolkit", ghqc_level)
-        .filter_module("ghqcr", ghqc_level);
+        .filter_module("ghqc", ghqc_level);
 
     // octocrab should never go below INFO, but can be more verbose if requested
     let octocrab_level = if ghqc_level < log::LevelFilter::Info {
@@ -118,7 +118,7 @@ fn read_to_string_impl(path: &str) -> Nullable<String> {
 // This ensures exported functions are registered with R.
 // See corresponding C code in `entrypoint.c`.
 extendr_module! {
-    mod ghqcr;
+    mod ghqc;
     use notify;
     use git_utils;
     use create;

@@ -1,3 +1,8 @@
+#' @export
+#' @description
+#' Launches the notify app into the foreground for authors to comment on updates made to the script,
+#' reviewers to comment saved, uncommitted, in-line diffs, and approve and unapprove the issue.
+#'
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
     ui = ghqc_notify_ui(id = "ghqc_notify_app"),
@@ -21,7 +26,7 @@ ghqc_notify_ui <- function(id) {
       shiny::tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "ghqcr/css/styles.css"
+        href = "ghqc/css/styles.css"
       ),
       shiny::tags$style(
         HTML(
@@ -64,7 +69,7 @@ ghqc_notify_ui <- function(id) {
           shiny::div(
             style = "position: relative; flex-shrink: 0; width: 50px; height: 50px;",
             shiny::tags$img(
-              src = "ghqcr/ghqc_hex.png",
+              src = "ghqc/ghqc_hex.png",
               class = "logo-img",
               style = "height: 46px; !important;"
             ) # this is important to ensure style priority so logo is the correct size
@@ -813,6 +818,9 @@ ghqc_notify_server <- function(id, working_dir) {
                 glue::glue(
                   "Could not determine current HEAD commit: {e$message}"
                 ),
+                glue::glue(
+                  "Could not determine current HEAD commit: {e$message}"
+                ),
                 footer = NULL,
                 easyClose = TRUE
               ))
@@ -956,13 +964,13 @@ ghqc_notify_server <- function(id, working_dir) {
               rel_commits
             }
           }),
-          reactive({
+          shiny::reactive({
             input$type_tab == "Approve" || input$type_tab == "Review"
           }),
-          reactive({
+          shiny::reactive({
             input$type_tab
           }),
-          reactive({
+          shiny::reactive({
             # For Review tab, pass HEAD commit as default
             if (input$type_tab == "Review") {
               head_commit_result <- tryCatch(

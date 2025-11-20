@@ -1,11 +1,18 @@
-Package: ghqcr
-Title: What the Package Does (One Line, Title Case)
+Package: ghqc
+Title: Quality Control using GitHub - Shiny apps to improve the QC workflow
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Authors@R: c(
+    person("Wes", "Cummings", , "wes@a2-ai.com", role = c("aut", "cre")),
+    person("Andrew", "Acker", , "andrew@a2-ai.com", role = c("aut")),
+    person("Jenna", "Johnson", role = c("aut")),
+    person("Devin", "Pastoor", , "devin@a2-ai.com", role = c("aut")),
+    person("Anne", "Zheng", , "anne@a2-ai.com", role = c("aut")),
+    person("Janelle", "Lennie", , "janelle.l.lennie@gsk.com", role = c("ctb")))
+Description: GHQC is a set of rust powered shiny apps that utilize GitHub Issues as the hub of the QC process.
+    Each file assigned for QC, using the Assign App, becomes its own Issue within a Milestone. 
+    Reviewers and Authors can then notify changes and reviews, using the Notify App, and approve once the file is finished.
+    The history of the QC can then be recorded into a PDF using the Record App.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
@@ -15,16 +22,20 @@ Depends:
     R (>= 4.2)
 Imports:
     cli,
-    rlang,
-    shiny (>= 1.8.0),
+    dplyr,
+    fs,
     glue (>= 1.6.2),
     here,
-    miniUI,
-    waiter,
-    purrr,
-    tibble,
-    shinyjs,
+    jsonlite,
     jsTreeR (>= 2.5.0),
+    later,
+    miniUI,
+    purrr,
+    rlang,
+    shiny (>= 1.8.0),
+    shinyjs,
     shinyvalidate,
-    shinyWidgets
-
+    shinyWidgets,
+    stringr,
+    tibble,
+    waiter

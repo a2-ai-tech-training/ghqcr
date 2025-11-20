@@ -1,3 +1,7 @@
+#' @export
+#' @description
+#' Launch the QC Record app in the foreground
+
 ghqc_record_app <- function(
   working_dir = here::here(),
   config_dir = NULL
@@ -43,7 +47,7 @@ ghqc_record_ui <- function(id) {
       shiny::tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "ghqcr/css/styles.css"
+        href = "ghqc/css/styles.css"
       ),
     ),
     waiter::waiter_show_on_load(
@@ -61,7 +65,7 @@ ghqc_record_ui <- function(id) {
           shiny::div(
             style = "position: relative; flex-shrink: 0; width: 50px; height: 50px;",
             shiny::tags$img(
-              src = "ghqcr/ghqc_hex.png",
+              src = "ghqc/ghqc_hex.png",
               class = "logo-img",
               style = "height: 46px; !important;"
             ) # this is important to ensure style priority so logo is the correct size
