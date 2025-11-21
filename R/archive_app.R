@@ -583,10 +583,18 @@ Deselecting the **Include Open Issues** checkbox
     )
 
     # Create static container for dynamic file content (like assign_app)
-    output$main_panel_dynamic <- shiny::renderUI({
-      shiny::div(
-        id = session$ns("files_container"),
-        class = "grid-container-depth-0"
+    output$main_panel_dynamic <- renderUI({
+      session$sendCustomMessage("adjust_grid", id)
+
+      shiny::tagList(
+        shiny::div(
+          id = session$ns("grid_container"),
+          class = "grid-container-depth-0",
+          style = "display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 10px 12px; align-items: start;",
+          shiny::div(shiny::tags$strong("Files")),
+          shiny::div(shiny::tags$strong("Milestones")),
+          shiny::div(shiny::tags$strong("Commits"))
+        )
       )
     })
 
@@ -642,7 +650,7 @@ Deselecting the **Include Open Issues** checkbox
             session$ns
           )
           shiny::insertUI(
-            selector = paste0("#", session$ns("files_container")),
+            selector = paste0("#", session$ns("grid_container")),
             where = "beforeEnd",
             ui = file_ui
           )
@@ -1074,12 +1082,9 @@ create_single_archive_file_ui <- function(
   .le$trace("Creating file row with id: {input_id$file_row}")
   shiny::div(
     id = ns(input_id$file_row),
-    # shiny::div(class = "item-a", file_preview, style = "padding-bottom: 5px;"),
-    shiny::div(
-      class = "grid-items",
-      shiny::div(class = "item-a", shiny::h5(file_name)),
-      shiny::div(class = "item-b", milestone_input),
-      shiny::div(class = "item-c", commit_input)
-    )
+    style = "display: contents;", # children participate in parent grid
+    shiny::h5(file_name),
+    milestone_input,
+    commit_input
   )
 }
