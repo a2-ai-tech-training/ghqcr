@@ -1,12 +1,45 @@
 use extendr_api::{deserializer::from_robj, prelude::*, IntoRobj};
-use ghqctoolkit::IssueThread;
+use ghqctoolkit::{parse_branch_from_body, IssueThread};
 use octocrab::models::issues::Issue;
 
 use crate::utils::{get_cached_git_info, get_disk_cache, get_rt};
 
 extendr_module! {
     mod archive;
-    fn get_issue_df_impl;
+    fn get_issue_latest_commit_impl;
+    fn get_issue_branch_impl;
+}
+
+#[extendr]
+fn get_issue_branch_impl(issue_robj: Robj) -> Nullable<String> {
+    let issue: Issue = match from_robj::<Issue>(&issue_robj) {
+        Ok(i) => i,
+        Err(e) => {
+            log::warn!("Failed to convert Issue Robj to struct: {e}. Returning null...");
+            return Nullable::Null;
+        }
+    };
+
+    let Some(body) = &issue.body else {
+        log::warn!(
+            "Issue #{} - {} has no body to parse for branch. Returning null...",
+            issue.number,
+            issue.title
+        );
+        return Nullable::Null;
+    };
+
+    match parse_branch_from_body(body) {
+        Some(b) => Nullable::NotNull(b),
+        None => {
+            log::warn!(
+                "Failed to parse branch from issue #{} - {}",
+                issue.number,
+                issue.title
+            );
+            Nullable::Null
+        }
+    }
 }
 
 #[derive(Debug, Clone, IntoRobj)]
@@ -44,7 +77,7 @@ impl TryFrom<IssueThread> for IssueLatestCommit {
 }
 
 #[extendr]
-fn get_issue_df_impl(issue_robj: Robj, working_dir: &str) -> Result<IssueLatestCommit> {
+fn get_issue_latest_commit_impl(issue_robj: Robj, working_dir: &str) -> Result<IssueLatestCommit> {
     let issue: Issue = from_robj(&issue_robj)?;
     let cached_git_info = get_cached_git_info(working_dir)?;
     let git_info = cached_git_info.as_ref();

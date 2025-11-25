@@ -278,6 +278,7 @@ ghqc_archive_server <- function(
     })
 
     validator$add_rule("archive_name", shinyvalidate::sv_required())
+    validator$enable()
     custom_archive_name <- shiny::reactiveVal(FALSE)
 
     shiny::observeEvent(
@@ -341,9 +342,14 @@ ghqc_archive_server <- function(
     )
 
     flattened_loaded_issues <- shiny::reactive(flatten_multiple_milestone_issues(loaded_issues()))
+
     selected_milestone_files <- shiny::reactive({
       if (is_empty(input$selected_milestones)) {
-        return(tibble::tibble(name = character(0), milestone = character(0)))
+        return(tibble::tibble(
+          name = character(0),
+          milestone = character(0),
+          branch = character(0)
+        ))
       }
       selected_issues <- flattened_loaded_issues() |>
         dplyr::filter(milestone %in% input$selected_milestones) |>
@@ -352,8 +358,48 @@ ghqc_archive_server <- function(
         selected_issues <- selected_issues |> dplyr::filter(!open)
       }
       selected_issues |>
-        dplyr::select(name, milestone) |>
+        dplyr::select(name, milestone, branch) |>
         dplyr::mutate(from_milestone = TRUE)
+    })
+
+    # Check if current branch is missing from globally selected milestones
+    branch_mismatch_warning_needed <- shiny::reactive({
+      # Only show warning if there are globally selected milestones
+      if (is_empty(input$selected_milestones)) {
+        return(FALSE)
+      }
+
+      milestone_files <- selected_milestone_files()
+      if (nrow(milestone_files) == 0) {
+        return(FALSE)
+      }
+
+      # Get unique branches from selected milestones
+      milestone_branches <- milestone_files$branch |> unique()
+
+      # Check if current branch is NOT in the milestone branches
+      !branch %in% milestone_branches
+    })
+
+    # Trigger validation when branch mismatch status changes
+    shiny::observeEvent(branch_mismatch_warning_needed(), {
+      # Re-validate all commit fields when branch mismatch status changes
+      current_files <- rendered_files()
+      if (!is_empty(current_files)) {
+        for (file in current_files) {
+          commit_id <- generate_input_id("commits", file)
+          # Trigger validation by getting current value and re-setting it
+          current_value <- input[[commit_id]]
+          if (!is.null(current_value)) {
+            # This will trigger the validation rules
+            shiny::updateSelectizeInput(
+              session,
+              commit_id,
+              selected = current_value
+            )
+          }
+        }
+      }
     })
 
     shiny::observeEvent(
@@ -372,6 +418,7 @@ ghqc_archive_server <- function(
         }
 
         milestones_to_deselect <- selected_milestone_files() |>
+          dplyr::select(-branch) |>
           dplyr::filter(name %in% duplicates) |>
           dplyr::group_by(name) |>
           dplyr::mutate(row_id = dplyr::row_number()) |>
@@ -575,7 +622,7 @@ Deselecting the **Include Open Issues** checkbox
           c("")
 
         dplyr::bind_rows(
-          selected_milestone_files(),
+          selected_milestone_files() |> dplyr::select(-branch),
           file_tree_selected_files()
         ) |>
           dplyr::filter(milestone %in% avail_milestones)
@@ -590,7 +637,7 @@ Deselecting the **Include Open Issues** checkbox
         shiny::div(
           id = session$ns("grid_container"),
           class = "grid-container-depth-0",
-          style = "display: grid; grid-template-columns: 1fr 1fr 1.5fr; gap: 10px 12px; align-items: start;",
+          style = "display: grid; grid-template-columns: 1fr minmax(150px, 1fr) 1.5fr; gap: 10px 12px; align-items: start;",
           shiny::div(shiny::tags$strong("Files")),
           shiny::div(shiny::tags$strong("Milestones")),
           shiny::div(shiny::tags$strong("Commits"))
@@ -620,6 +667,7 @@ Deselecting the **Include Open Issues** checkbox
 
         for (file in files_to_remove) {
           milestone_id <- generate_input_id("milestone", file)
+          commit_id <- generate_input_id("commits", file)
           row_id <- generate_input_id("file_row", file) |> session$ns()
           attr_selector <- glue::glue("[id='{row_id}']")
 
@@ -629,6 +677,12 @@ Deselecting the **Include Open Issues** checkbox
             milestone_observers[[file]] <- NULL
             .le$debug("Removed milestone observer for file: {file}")
           }
+
+          # Note: shinyvalidate doesn't support removing individual rules
+          # Rules will be cleaned up when the input elements are removed
+          .le$debug(
+            "Validation rules will be cleaned up with input removal for file: {file}"
+          )
 
           shiny::updateSelectizeInput(
             session,
@@ -654,6 +708,76 @@ Deselecting the **Include Open Issues** checkbox
             where = "beforeEnd",
             ui = file_ui
           )
+
+          # Add comprehensive commit validation rule (branch mismatch + required)
+          commit_id <- generate_input_id("commits", file)
+          local({
+            current_file <- file
+            validator$add_rule(
+              commit_id,
+              function(value) {
+                tryCatch(
+                  {
+                    # First check for branch mismatch - this overrides required validation
+                    branch_warning <- check_branch_mismatch_warning(
+                      current_file,
+                      input,
+                      branch_mismatch_warning_needed()
+                    )
+
+                    if (!is.null(branch_warning)) {
+                      return(branch_warning)
+                    }
+
+                    # If no branch mismatch, check required validation
+                    if (is.null(value) || value == "") {
+                      return("Select a commit")
+                    }
+
+                    # All validations pass
+                    return(NULL)
+                  },
+                  error = function(e) {
+                    .le$warn(
+                      "Error in commit validation for {current_file}: {e$message}"
+                    )
+                    return(NULL)
+                  }
+                )
+              }
+            )
+          })
+          .le$debug(
+            "Added comprehensive commit validation rule for file: {file}"
+          )
+
+          # Add milestone validation rule for this file to show open issue warnings
+          milestone_id <- generate_input_id("milestones", file)
+          # Capture file name in local scope to avoid closure issues
+          local({
+            current_file <- file
+            validator$add_rule(
+              milestone_id,
+              function(value) {
+                tryCatch(
+                  {
+                    check_milestone_issue_status(
+                      current_file,
+                      value,
+                      flattened_loaded_issues()
+                    )
+                  },
+                  error = function(e) {
+                    .le$warn(
+                      "Error in milestone validation for {current_file}: {e$message}"
+                    )
+                    return(NULL)
+                  }
+                )
+              }
+            )
+          })
+          .le$debug("Added milestone validation rule for file: {file}")
 
           # Create milestone observer for this file after UI is inserted
           # Use local() to properly capture the file variable
@@ -742,6 +866,38 @@ Deselecting the **Include Open Issues** checkbox
 
     # Keep track of milestone observers to avoid duplicates
     milestone_observers <- shiny::reactiveValues()
+
+    # Handle create archive button with validation
+    shiny::observeEvent(input$create_archive, {
+      .le$debug("Create archive button clicked")
+
+      if (!validator$is_valid()) {
+        .le$debug("Validation failed - showing validation errors")
+        # Show validation errors - shinyvalidate will handle the UI feedback
+        return()
+      }
+
+      .le$info("Validation passed - proceeding with archive creation")
+
+      # TODO: Implement archive creation logic here
+      # For now, show a success message
+      shiny::showNotification(
+        "Archive creation would proceed here (validation passed!)",
+        type = "message",
+        duration = 3
+      )
+    })
+
+    # Handle close and reset buttons
+    shiny::observeEvent(input$close, {
+      reset_triggered(TRUE)
+      shiny::stopApp()
+    })
+
+    shiny::observeEvent(input$reset, {
+      reset_triggered(TRUE)
+      session$reload()
+    })
   })
 }
 
@@ -804,7 +960,11 @@ update_commit_options <- function(
       working_dir
     )
 
-    if (is.null(latest_commit_info)) {
+    if (
+      is.null(latest_commit_info) ||
+        is.null(latest_commit_info$commit) ||
+        is.null(latest_commit_info$message)
+    ) {
       .le$warn("Could not retrieve commit for issue #{issue_number}")
       shiny::updateSelectizeInput(
         session,
@@ -816,7 +976,7 @@ update_commit_options <- function(
       return()
     }
 
-    # Create a single choice with the latest commit using message from get_issue_df_impl
+    # Create a single choice with the latest commit using message from get_issue_latest_commit_impl
     commit_display <- format_commit_choice(
       latest_commit_info$commit,
       latest_commit_info$message
@@ -995,14 +1155,27 @@ get_latest_commit_from_issue <- function(
       return(NULL)
     }
 
-    # Call get_issue_df_impl with the full issue object
-    issue_data <- get_issue_df_impl(full_issue, working_dir)
+    # Call get_issue_latest_commit_impl with the full issue object
+    issue_data <- get_issue_latest_commit_impl(full_issue, working_dir)
     # Cache the result
     cached_issues[[cache_key]] <- issue_data
   }
 
   # Extract the latest commit info (assuming it's the first/most recent in the data)
   if (is_empty(issue_data)) {
+    return(NULL)
+  }
+
+  # Validate that we have commit and message data
+  if (
+    is.null(issue_data$commit) ||
+      length(issue_data$commit) == 0 ||
+      is.null(issue_data$message) ||
+      length(issue_data$message) == 0
+  ) {
+    .le$warn(
+      "Issue data for #{issue_number} is missing commit or message information"
+    )
     return(NULL)
   }
 
@@ -1074,7 +1247,7 @@ create_single_archive_file_ui <- function(
     width = "100%",
     selected = NULL,
     options = list(
-      placeholder = "Select a commit"
+      placeholder = "Select commit (required)"
     )
   )
 
@@ -1086,5 +1259,61 @@ create_single_archive_file_ui <- function(
     shiny::h5(file_name),
     milestone_input,
     commit_input
+  )
+}
+
+# Helper function to check if an issue is open for milestone validation
+check_milestone_issue_status <- function(
+  file_name,
+  milestone_value,
+  flattened_issues
+) {
+  # If no milestone selected, no validation message needed
+  if (is.null(milestone_value) || milestone_value == "") {
+    return(NULL)
+  }
+
+  # Find the issue for this file and milestone combination
+  issue_info <- flattened_issues |>
+    dplyr::filter(name == file_name, milestone == milestone_value)
+
+  if (nrow(issue_info) == 0) {
+    # No issue found - this might be a manually selected file
+    return(NULL)
+  }
+
+  # Check if the issue is open
+  if (issue_info$open[1]) {
+    return("Issue is Open")
+  }
+
+  # Issue is closed, no validation message needed
+  return(NULL)
+}
+
+# Helper function to check for branch mismatch warning on commit dropdowns
+check_branch_mismatch_warning <- function(
+  file_name,
+  input,
+  branch_warning_needed
+) {
+  # Only show warning if branch mismatch is detected
+  if (!branch_warning_needed) {
+    return(NULL)
+  }
+
+  # Check if this file has a milestone selected (auto-selected commits)
+  milestone_input_id <- generate_input_id("milestones", file_name)
+  milestone_value <- input[[milestone_input_id]]
+
+  # If milestone is selected, commits are auto-selected, no warning needed
+  if (!is.null(milestone_value) && milestone_value != "") {
+    return(NULL)
+  }
+
+  # File has no milestone selected and there's a branch mismatch
+  # Show this warning immediately and persistently
+  return(
+    "Current branch does not match any Issue's branch. May be missing relevant commits"
   )
 }

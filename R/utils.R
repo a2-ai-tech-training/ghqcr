@@ -147,7 +147,8 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
       milestone_number = numeric(0),
       number = integer(0),
       name = character(0),
-      open = logical(0)
+      open = logical(0),
+      branch = character(0)
     ))
   }
 
@@ -183,7 +184,8 @@ flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
           milestone_number = milestone_number,
           number = issue$number,
           name = issue$title,
-          open = identical(issue$state, "open")
+          open = identical(issue$state, "open"),
+          branch = get_issue_branch_impl(issue),
         )
       })
     }

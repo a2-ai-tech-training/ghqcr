@@ -86,7 +86,9 @@ get_milestone_issue_information_impl <- function(milestones, working_dir) .Call(
 
 generate_record_impl <- function(milestones, milestone_issues, configuration, record_path, working_dir, just_tables) .Call(wrap__generate_record_impl, milestones, milestone_issues, configuration, record_path, working_dir, just_tables)
 
-get_issue_df_impl <- function(issue_robj, working_dir) .Call(wrap__get_issue_df_impl, issue_robj, working_dir)
+get_issue_latest_commit_impl <- function(issue_robj, working_dir) .Call(wrap__get_issue_latest_commit_impl, issue_robj, working_dir)
+
+get_issue_branch_impl <- function(issue_robj) .Call(wrap__get_issue_branch_impl, issue_robj)
 
 
 # nolint end
