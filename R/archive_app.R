@@ -645,7 +645,17 @@ Deselecting the **Include Open Issues** checkbox
       )
     })
 
+    commits_to_update <- shiny::reactiveVal(tibble::tibble(
+      file_name = character(0),
+      milestone = character(0)
+    ))
     rendered_files <- shiny::reactiveVal(c())
+
+    # Track when to show missing commits modal
+    show_missing_commits_modal <- shiny::reactiveVal(FALSE)
+
+    # Track previously warned commit issues to avoid duplicate warnings
+    previously_warned_issues <- shiny::reactiveVal(character(0))
     shiny::observeEvent(
       archive_files(),
       {
@@ -663,7 +673,37 @@ Deselecting the **Include Open Issues** checkbox
           .le$info(
             "Removing {length(files_to_remove)} ui rows for: {paste(files_to_remove, collapse = ', ')}"
           )
+
+          # Clear previously warned issues for files that are being removed
+          if (length(previously_warned_issues()) > 0) {
+            # Get issue numbers for files being removed
+            removed_file_issues <- character(0)
+            for (file in files_to_remove) {
+              # Check all milestones to find issues associated with this file
+              file_issues <- flattened_loaded_issues() |>
+                dplyr::filter(name == file) |>
+                dplyr::pull(number) |>
+                as.character()
+              removed_file_issues <- c(removed_file_issues, file_issues)
+            }
+
+            # Remove these issues from previously warned list
+            if (length(removed_file_issues) > 0) {
+              current_warned <- previously_warned_issues()
+              updated_warned <- setdiff(current_warned, removed_file_issues)
+              previously_warned_issues(updated_warned)
+              .le$debug(
+                "Cleared previously warned issues for removed files: {paste(removed_file_issues, collapse = ', ')}"
+              )
+            }
+          }
         }
+
+        if (is_empty(files_to_add) && is_empty(files_to_remove)) {
+          return()
+        }
+
+        update_commits_waiter$show()
 
         for (file in files_to_remove) {
           milestone_id <- generate_input_id("milestone", file)
@@ -798,17 +838,16 @@ Deselecting the **Include Open Issues** checkbox
                     .le$debug(
                       "Milestone for '{current_file_name}' changed: {milestone_value}"
                     )
-
-                    update_commit_options(
-                      session,
-                      current_file_name,
-                      milestone_value,
-                      local_commits,
-                      cached_issues,
-                      loaded_issues(),
-                      flattened_loaded_issues(),
-                      working_dir
-                    )
+                    backlog <- commits_to_update()
+                    # Remove any existing entry for this file to avoid duplicates
+                    backlog <- backlog[backlog$file_name != current_file_name, ]
+                    commits_to_update(dplyr::bind_rows(
+                      backlog,
+                      tibble::tibble(
+                        file_name = current_file_name,
+                        milestone = milestone_value
+                      )
+                    ))
                   },
                   ignoreNULL = FALSE,
                   ignoreInit = FALSE
@@ -824,7 +863,223 @@ Deselecting the **Include Open Issues** checkbox
           })
         }
         rendered_files(archive_files()$name)
+        update_commits_waiter$hide()
       },
+      ignoreInit = TRUE
+    )
+
+    update_commits_waiter <- waiter::Waiter$new(
+      id = session$ns("main_container"),
+      html = shiny::tagList(
+        waiter::spin_2(),
+        shiny::h4(glue::glue(
+          "Rendering file row(s)..."
+        ))
+      ),
+      color = "darkgrey"
+    )
+
+    shiny::observeEvent(
+      shiny::debounce(commits_to_update(), 50),
+      {
+        shiny::req(!is_empty(commits_to_update()))
+        .le$trace(
+          "Looking up commit for selected milestone files: {paste0(commits_to_update()$file_name, collapse = ', ')}"
+        )
+        update_commits_waiter$show()
+
+        # Process all accumulated items (without failed_commits parameter)
+        purrr::map2(
+          commits_to_update()$file_name,
+          commits_to_update()$milestone,
+          function(file_name, milestone) {
+            update_commit_options(
+              session,
+              file_name,
+              milestone,
+              local_commits,
+              cached_issues,
+              loaded_issues(),
+              flattened_loaded_issues(),
+              working_dir
+            )
+          }
+        )
+
+        # Clear everything and reset flag
+        commits_to_update(tibble::tibble(
+          file_name = character(0),
+          milestone = character(0)
+        ))
+        update_commits_waiter$hide()
+
+        # Trigger modal check after processing is complete
+        show_missing_commits_modal(TRUE)
+      },
+      ignoreNULL = TRUE,
+      ignoreInit = TRUE
+    )
+
+    # Check all rendered files for missing commits modal system
+    shiny::observeEvent(
+      shiny::debounce(show_missing_commits_modal(), 500),
+      {
+        shiny::req(show_missing_commits_modal())
+
+        # Reset the trigger
+        show_missing_commits_modal(FALSE)
+
+        # Check all currently rendered files for commit issues
+        missing_commits_info <- tibble::tibble()
+
+        for (file_name in rendered_files()) {
+          # Get the milestone input for this file
+          milestone_input_id <- generate_input_id("milestones", file_name)
+          milestone_value <- input[[milestone_input_id]]
+
+          # Skip if no milestone selected
+          if (is.null(milestone_value) || milestone_value == "") {
+            next
+          }
+
+          # Find the issue info for this file and milestone
+          issue_info <- flattened_loaded_issues() |>
+            dplyr::filter(name == file_name, milestone == milestone_value)
+
+          if (nrow(issue_info) == 0) {
+            next
+          }
+
+          issue_number <- issue_info$number[1]
+
+          # Replicate the same logic as update_commit_options to check if commit is missing
+          latest_commit_info <- tryCatch(
+            {
+              get_latest_commit_from_issue(
+                issue_number,
+                cached_issues,
+                loaded_issues(),
+                working_dir
+              )
+            },
+            error = function(e) NULL
+          )
+
+          # Check if commit info is missing (same condition as update_commit_options)
+          if (
+            is.null(latest_commit_info) ||
+              is.null(latest_commit_info$commit) ||
+              is.null(latest_commit_info$message)
+          ) {
+            missing_commits_info <- dplyr::bind_rows(
+              missing_commits_info,
+              tibble::tibble(
+                file_name = file_name,
+                issue_number = as.character(issue_number),
+                expected_branch = issue_info$branch[1],
+                milestone = milestone_value
+              )
+            )
+          }
+        }
+
+        # Show modal only if there are missing commits AND they're different from previously warned
+        if (nrow(missing_commits_info) > 0) {
+          current_issues <- sort(missing_commits_info$issue_number)
+          previous_issues <- sort(previously_warned_issues())
+
+          # Only show modal if the issues are different from what we've already warned about
+          if (!identical(current_issues, previous_issues)) {
+            .le$debug(
+              "Showing missing commits modal for issues: {paste0(current_issues, collapse = ', ')}"
+            )
+
+            # Create modal content with recommendations at top
+            modal_content <- shiny::div(
+              shiny::h4(
+                glue::glue(
+                  "Could not find commits for {length(current_issues)} issues"
+                )
+              ),
+              shiny::div(
+                style = "background-color: #d1ecf1; padding: 10px; border-radius: 5px; border-left: 4px solid #bee5eb; margin-bottom: 15px;",
+                shiny::strong("To resolve:"),
+                shiny::br(),
+                "1. Run: ",
+                shiny::code("git fetch origin"),
+                shiny::br(),
+                "2. For each expected branch below, checkout the branch:",
+                shiny::br(),
+                # List each unique branch that needs to be checked out
+                purrr::map(unique(missing_commits_info$expected_branch), function(branch) {
+                  shiny::div(
+                    style = "margin-left: 20px;",
+                    shiny::code(glue::glue("git checkout {branch}")),
+                    shiny::br()
+                  )
+                }),
+                "3. Return to your working branch: ",
+                shiny::code(glue::glue("git checkout {branch}")),
+                shiny::br(),
+                "4. Refresh the milestone selection"
+              ),
+              shiny::div(
+                style = "background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;",
+                shiny::strong("Current branch: "),
+                shiny::code(branch)
+              ),
+              shiny::br(),
+              # Issues list after recommendations
+              purrr::map(1:nrow(missing_commits_info), function(i) {
+                row <- missing_commits_info[i, ]
+                shiny::div(
+                  style = "border: 1px solid #dee2e6; padding: 10px; margin: 5px 0; border-radius: 3px;",
+                  shiny::strong(glue::glue("Issue #{row$issue_number}")),
+                  shiny::br(),
+                  shiny::span("File: ", shiny::code(row$file_name)),
+                  shiny::br(),
+                  shiny::span("Milestone: ", shiny::code(row$milestone)),
+                  shiny::br(),
+                  shiny::span(
+                    "Expected branch: ",
+                    shiny::code(row$expected_branch)
+                  )
+                )
+              })
+            )
+
+            # Show modal with Return button in title bar
+            shiny::showModal(
+              shiny::modalDialog(
+                modal_content,
+                title = shiny::tags$div(
+                  style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                  shiny::tags$div(
+                    shiny::modalButton("Return"),
+                    style = "flex: 0 0 auto;"
+                  ),
+                  shiny::tags$div(
+                    "Missing Commits",
+                    style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+                  ),
+                  shiny::tags$div(style = "flex: 0 0 auto;") # Empty right side
+                ),
+                size = "l",
+                footer = NULL,
+                easyClose = TRUE
+              )
+            )
+
+            # Record the current issues as warned immediately when modal is shown
+            previously_warned_issues(current_issues)
+          } else {
+            .le$debug(
+              "Skipping modal - same issues already warned: {paste0(current_issues, collapse = ', ')}"
+            )
+          }
+        }
+      },
+      ignoreNULL = TRUE,
       ignoreInit = TRUE
     )
 
@@ -965,7 +1220,7 @@ update_commit_options <- function(
         is.null(latest_commit_info$commit) ||
         is.null(latest_commit_info$message)
     ) {
-      .le$warn("Could not retrieve commit for issue #{issue_number}")
+      # Just update the UI to show commit not found
       shiny::updateSelectizeInput(
         session,
         commit_input_id,
