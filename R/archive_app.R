@@ -184,11 +184,6 @@ ghqc_archive_server <- function(
           label = "Include Open Issues",
           value = FALSE
         ),
-        shiny::checkboxInput(
-          session$ns("include_relevant_files"),
-          label = "Include Relevant Files",
-          value = FALSE
-        ),
         shiny::textInput(
           session$ns("archive_name"),
           "Archive Name",
@@ -656,6 +651,16 @@ Deselecting the **Include Open Issues** checkbox
 
     # Track previously warned commit issues to avoid duplicate warnings
     previously_warned_issues <- shiny::reactiveVal(character(0))
+
+    #Track issues which do not have commits selected
+    unselected_commit_issues <- shiny::reactiveVal(c())
+
+    # Keep track of milestone observers to avoid duplicates
+    milestone_observers <- shiny::reactiveValues()
+
+    # Leep track of commit observers to avoid duplicates
+    commit_observers <- shiny::reactiveValues()
+
     shiny::observeEvent(
       archive_files(),
       {
@@ -716,6 +721,15 @@ Deselecting the **Include Open Issues** checkbox
             milestone_observers[[file]]$destroy()
             milestone_observers[[file]] <- NULL
             .le$debug("Removed milestone observer for file: {file}")
+          }
+
+          if (!is.null(commit_observers[[file]])) {
+            unselected <- unselected_commit_issues()
+            unselected_commit_issues(setdiff(unselected, file))
+
+            commit_observers[[file]]$destroy()
+            commit_observers[[file]] <- NULL
+            .le$debug("Removed commit observer for file: {file}")
           }
 
           # Note: shinyvalidate doesn't support removing individual rules
@@ -804,7 +818,10 @@ Deselecting the **Include Open Issues** checkbox
                     check_milestone_issue_status(
                       current_file,
                       value,
-                      flattened_loaded_issues()
+                      flattened_loaded_issues(),
+                      cached_issues,
+                      loaded_issues(),
+                      working_dir
                     )
                   },
                   error = function(e) {
@@ -827,6 +844,10 @@ Deselecting the **Include Open Issues** checkbox
               function() {
                 milestone_input_id <- generate_input_id(
                   "milestones",
+                  current_file_name
+                )
+                commit_input_id <- generate_input_id(
+                  "commits",
                   current_file_name
                 )
 
@@ -854,8 +875,33 @@ Deselecting the **Include Open Issues** checkbox
                 )
 
                 milestone_observers[[current_file_name]] <- observer
+
+                observer <- shiny::observeEvent(
+                  input[[commit_input_id]],
+                  {
+                    unselected_sans_current <- setdiff(
+                      unselected_commit_issues(),
+                      current_file_name
+                    )
+                    if (
+                      is_empty(input[[commit_input_id]]) ||
+                        input[[commit_input_id]] == ""
+                    ) {
+                      unselected_commit_issues(c(
+                        unselected_sans_current,
+                        current_file_name
+                      ))
+                    } else {
+                      unselected_commit_issues(unselected_sans_current)
+                    }
+                  },
+                  ignoreNULL = FALSE,
+                  ignoreInit = FALSE
+                )
+
+                commit_observers[[current_file_name]] <- observer
                 .le$debug(
-                  "Created milestone observer for file: {current_file_name}"
+                  "Created commit and milestones observers for file: {current_file_name}"
                 )
               },
               delay = 0.1
@@ -1011,13 +1057,16 @@ Deselecting the **Include Open Issues** checkbox
                 "2. For each expected branch below, checkout the branch:",
                 shiny::br(),
                 # List each unique branch that needs to be checked out
-                purrr::map(unique(missing_commits_info$expected_branch), function(branch) {
-                  shiny::div(
-                    style = "margin-left: 20px;",
-                    shiny::code(glue::glue("git checkout {branch}")),
-                    shiny::br()
-                  )
-                }),
+                purrr::map(
+                  unique(missing_commits_info$expected_branch),
+                  function(branch) {
+                    shiny::div(
+                      style = "margin-left: 20px;",
+                      shiny::code(glue::glue("git checkout {branch}")),
+                      shiny::br()
+                    )
+                  }
+                ),
                 "3. Return to your working branch: ",
                 shiny::code(glue::glue("git checkout {branch}")),
                 shiny::br(),
@@ -1111,16 +1160,52 @@ Deselecting the **Include Open Issues** checkbox
       ignoreInit = TRUE
     )
 
-    shiny::observeEvent(
-      input$include_relevant_files,
-      {
-        # browser()
-      },
-      ignoreInit = TRUE
-    )
+    # Function to check all archive button requirements
+    check_archive_button_state <- function() {
+      # Check 1: Must have files in archive
+      if (length(rendered_files()) == 0) {
+        .le$debug("Archive button disabled - no files in archive")
+        shinyjs::removeClass("create_archive", "enable-btn")
+        shinyjs::addClass("create_archive", "disable-btn")
+        shinyjs::disable("create_archive")
+        return()
+      }
 
-    # Keep track of milestone observers to avoid duplicates
-    milestone_observers <- shiny::reactiveValues()
+      # Check 2: Must have archive name
+      archive_name <- input$archive_name
+      if (is.null(archive_name) || trimws(archive_name) == "") {
+        .le$debug("Archive button disabled - no archive name provided")
+        shinyjs::removeClass("create_archive", "enable-btn")
+        shinyjs::addClass("create_archive", "disable-btn")
+        shinyjs::disable("create_archive")
+        return()
+      }
+
+      # Check 3: All files must have commits selected
+      if (length(unselected_commit_issues()) > 0) {
+        .le$debug(
+          "Archive button disabled - some files missing commit selection"
+        )
+        shinyjs::removeClass("create_archive", "enable-btn")
+        shinyjs::addClass("create_archive", "disable-btn")
+        shinyjs::disable("create_archive")
+        return()
+      }
+
+      # All requirements met - enable button
+      .le$debug("Archive button enabled - all requirements met")
+      shinyjs::removeClass("create_archive", "disable-btn")
+      shinyjs::addClass("create_archive", "enable-btn")
+      shinyjs::enable("create_archive")
+    }
+
+    # Monitor all requirements for Archive button
+    shiny::observeEvent(
+      c(unselected_commit_issues(), rendered_files(), input$archive_name),
+      {
+        check_archive_button_state()
+      }
+    )
 
     # Handle create archive button with validation
     shiny::observeEvent(input$create_archive, {
@@ -1517,11 +1602,14 @@ create_single_archive_file_ui <- function(
   )
 }
 
-# Helper function to check if an issue is open for milestone validation
+# Helper function to check milestone issue approval status for validation
 check_milestone_issue_status <- function(
   file_name,
   milestone_value,
-  flattened_issues
+  flattened_issues,
+  cached_issues = NULL,
+  loaded_issues_data = NULL,
+  working_dir = NULL
 ) {
   # If no milestone selected, no validation message needed
   if (is.null(milestone_value) || milestone_value == "") {
@@ -1537,12 +1625,51 @@ check_milestone_issue_status <- function(
     return(NULL)
   }
 
-  # Check if the issue is open
+  issue_number <- issue_info$number[1]
+
+  # Try to get commit info to check approval status
+  if (
+    !is.null(cached_issues) &&
+      !is.null(loaded_issues_data) &&
+      !is.null(working_dir)
+  ) {
+    latest_commit_info <- tryCatch(
+      {
+        get_latest_commit_from_issue(
+          issue_number,
+          cached_issues,
+          loaded_issues_data,
+          working_dir
+        )
+      },
+      error = function(e) NULL
+    )
+
+    # If we can get commit info, check approval status
+    if (
+      !is.null(latest_commit_info) &&
+        !is.null(latest_commit_info$commit) &&
+        !is.null(latest_commit_info$message)
+    ) {
+      # Check if the issue state is approved
+      if (
+        !is.null(latest_commit_info$state) &&
+          latest_commit_info$state != "approved"
+      ) {
+        return("Issue is not approved")
+      }
+
+      # Issue is approved, no validation message needed
+      return(NULL)
+    }
+  }
+
+  # If we can't determine commit info, fall back to open/closed check
   if (issue_info$open[1]) {
     return("Issue is Open")
   }
 
-  # Issue is closed, no validation message needed
+  # Issue is closed but no commit found
   return(NULL)
 }
 
