@@ -42,8 +42,7 @@ fn get_milestone_issue_information_impl(milestones: Robj, working_dir: String) -
 
     let cache = get_disk_cache(git_info).as_ref();
 
-    let image_downloader = HttpImageDownloader::new(git_info.auth_token().clone())
-        .map_err(|e| Error::Other(format!("Failed to create Http Image Downloader: {e}")))?;
+    let image_downloader = HttpImageDownloader;
 
     let milestone_issue_info = rt
         .block_on(get_milestone_issue_information(
