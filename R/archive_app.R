@@ -1211,13 +1211,104 @@ Deselecting the **Include Open Issues** checkbox
     shiny::observeEvent(input$create_archive, {
       .le$debug("Create archive button clicked")
 
-      if (!validator$is_valid()) {
-        .le$debug("Validation failed - showing validation errors")
-        # Show validation errors - shinyvalidate will handle the UI feedback
+      # Custom validation that only blocks on required fields (not milestone warnings)
+      validation_failed <- FALSE
+
+      # Check archive name is provided
+      if (is.null(input$archive_name) || trimws(input$archive_name) == "") {
+        .le$debug("Validation failed - archive name required")
+        validation_failed <- TRUE
+      }
+
+      # Check all files have commits selected (but allow milestone warnings)
+      if (length(unselected_commit_issues()) > 0) {
+        .le$debug("Validation failed - some files missing commit selection")
+        validation_failed <- TRUE
+      }
+
+      if (validation_failed) {
         return()
       }
 
       .le$info("Validation passed - proceeding with archive creation")
+
+      # Create tibble of all rendered files with their data
+      archive_tibble <- tibble::tibble(
+        file = character(0),
+        commit = character(0),
+        milestone = character(0),
+        state = character(0)
+      )
+
+      for (file_name in rendered_files()) {
+        # Get milestone and commit for this file
+        milestone_input_id <- generate_input_id("milestones", file_name)
+        commit_input_id <- generate_input_id("commits", file_name)
+
+        milestone_value <- input[[milestone_input_id]]
+        commit_value <- input[[commit_input_id]]
+
+        # Determine state for this file
+        state_value <- NA_character_
+
+        if (!is.null(milestone_value) && milestone_value != "") {
+          # File has a milestone - get its state from issue data
+          issue_info <- flattened_loaded_issues() |>
+            dplyr::filter(name == file_name, milestone == milestone_value)
+
+          if (nrow(issue_info) > 0) {
+            issue_number <- issue_info$number[1]
+
+            # Get the commit info that contains state
+            latest_commit_info <- tryCatch(
+              {
+                get_latest_commit_from_issue(
+                  issue_number,
+                  cached_issues,
+                  loaded_issues(),
+                  working_dir
+                )
+              },
+              error = function(e) NULL
+            )
+
+            # Extract state if available
+            if (
+              !is.null(latest_commit_info) && !is.null(latest_commit_info$state)
+            ) {
+              state_value <- latest_commit_info$state
+            }
+          }
+        } else {
+          # File has no milestone - set milestone and state to NA
+          milestone_value <- NA_character_
+        }
+
+        # Add row to tibble
+        archive_tibble <- dplyr::bind_rows(
+          archive_tibble,
+          tibble::tibble(
+            file = file_name,
+            commit = if (is.null(commit_value) || commit_value == "") {
+              NA_character_
+            } else {
+              commit_value
+            },
+            milestone = milestone_value,
+            state = state_value
+          )
+        )
+      }
+
+      .le$debug("Created archive tibble with {nrow(archive_tibble)} files")
+      print(archive_tibble)
+
+      archive_path <- .catch(create_archive_impl(
+        archive_tibble |> purrr::transpose(),
+        input$flatten,
+        input$archive_name,
+        working_dir
+      ))
 
       # TODO: Implement archive creation logic here
       # For now, show a success message
@@ -1522,7 +1613,8 @@ get_latest_commit_from_issue <- function(
   # Return both commit hash and message
   list(
     commit = issue_data$commit[1],
-    message = issue_data$message[1]
+    message = issue_data$message[1],
+    state = issue_data$state[1]
   )
 }
 

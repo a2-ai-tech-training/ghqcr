@@ -818,7 +818,6 @@ dependencies = [
 [[package]]
 name = "ghqctoolkit"
 version = "0.1.0"
-source = "git+https://github.com/a2-ai/ghqctoolkit?branch=main#8fe49a076c02e7d49b698c4daac3d630a8b55f5d"
 dependencies = [
  "base64",
  "calamine",

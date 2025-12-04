@@ -1,13 +1,23 @@
-use extendr_api::{deserializer::from_robj, prelude::*, IntoRobj};
-use ghqctoolkit::{parse_branch_from_body, IssueThread};
-use octocrab::models::issues::Issue;
+use std::{path::PathBuf, str::FromStr};
 
-use crate::utils::{get_cached_git_info, get_disk_cache, get_rt};
+use extendr_api::{deserializer::from_robj, prelude::*, IntoRobj};
+use ghqctoolkit::{
+    archive, parse_branch_from_body, ArchiveFile, ArchiveMetadata, ArchiveQC, IssueThread,
+};
+use gix::ObjectId;
+use octocrab::models::issues::Issue;
+use serde::Deserialize;
+
+use crate::{
+    utils::{get_cached_git_info, get_disk_cache, get_rt},
+    ENV_PROVIDER,
+};
 
 extendr_module! {
     mod archive;
     fn get_issue_latest_commit_impl;
     fn get_issue_branch_impl;
+    fn create_archive_impl;
 }
 
 #[extendr]
@@ -91,4 +101,84 @@ fn get_issue_latest_commit_impl(issue_robj: Robj, working_dir: &str) -> Result<I
             issue.number, issue.title
         ))),
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ArchiveFileRow {
+    file: String,
+    commit: String,
+    milestone: Option<String>,
+    state: Option<String>,
+}
+
+impl ArchiveFileRow {
+    fn into_archive_file(&self, flatten: bool) -> Result<ArchiveFile> {
+        let commit = ObjectId::from_str(&self.commit).map_err(|e| {
+            format!(
+                "Could not parse commit from {} for {}: {e}",
+                self.commit, self.file
+            )
+        })?;
+
+        let repository_file = PathBuf::from(&self.file);
+        let archive_file = if flatten {
+            repository_file
+                .file_name()
+                .map(PathBuf::from)
+                .expect("File to have file name")
+        } else {
+            repository_file
+                .strip_prefix("/")
+                .unwrap_or(&repository_file)
+                .to_path_buf()
+        };
+
+        let qc = match (&self.milestone, &self.state) {
+            (Some(milestone), Some(state)) => Some(ArchiveQC {
+                milestone: milestone.to_string(),
+                approved: state == "approved",
+            }),
+            (None, None) => None,
+            _ => {
+                return Err(Error::Other(format!(
+                    "Milestone and state must be both a value or both null"
+                )));
+            }
+        };
+
+        Ok(ArchiveFile {
+            repository_file,
+            archive_file,
+            commit,
+            qc,
+        })
+    }
+}
+
+#[extendr]
+fn create_archive_impl(
+    archive_files_df: Robj,
+    flatten: bool,
+    archive_path: &str,
+    working_dir: &str,
+) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+
+    let archive_files_row = from_robj::<Vec<ArchiveFileRow>>(&archive_files_df)?;
+    let archive_files = archive_files_row
+        .iter()
+        .map(|row| row.into_archive_file(flatten))
+        .collect::<Result<Vec<_>>>()?;
+    log::debug!("Including {} files in archive", archive_files.len());
+
+    let archive_metadata = ArchiveMetadata::new(archive_files, &ENV_PROVIDER)
+        .map_err(|e| Error::Other(format!("{e}")))?;
+    let path = PathBuf::from(working_dir).join(archive_path);
+
+    log::debug!("Creating archive at {}", path.display());
+    archive(archive_metadata, git_info, &path)
+        .map_err(|e| format!("Failed to create archive: {e}"))?;
+
+    Ok(path.to_string_lossy().to_string())
 }
