@@ -1303,20 +1303,102 @@ Deselecting the **Include Open Issues** checkbox
       .le$debug("Created archive tibble with {nrow(archive_tibble)} files")
       print(archive_tibble)
 
-      archive_path <- .catch(create_archive_impl(
-        archive_tibble |> purrr::transpose(),
-        input$flatten,
-        input$archive_name,
-        working_dir
-      ))
-
-      # TODO: Implement archive creation logic here
-      # For now, show a success message
-      shiny::showNotification(
-        "Archive creation would proceed here (validation passed!)",
-        type = "message",
-        duration = 3
+      # Attempt to create the archive and show result modal
+      archive_result <- tryCatch(
+        {
+          archive_path <- .catch(create_archive_impl(
+            archive_tibble |> purrr::transpose(),
+            input$flatten,
+            input$archive_name,
+            working_dir
+          ))
+          list(success = TRUE, path = archive_path)
+        },
+        error = function(e) {
+          .le$error("Archive creation failed: {e$message}")
+          list(success = FALSE, error = e$message)
+        }
       )
+
+      # Show result modal
+      if (archive_result$success) {
+        # Success modal
+        shiny::showModal(
+          shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Close"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Archive Created Successfully",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px; color: #28a745;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;")
+            ),
+            shiny::div(
+              style = "text-align: center; padding: 20px;",
+              shiny::div(
+                shiny::icon("check-circle", style = "font-size: 48px; color: #28a745; margin-bottom: 15px;")
+              ),
+              shiny::h4("Your archive has been created successfully!"),
+              shiny::p(
+                style = "margin: 15px 0;",
+                "Archive contains ", shiny::strong(nrow(archive_tibble)), " files"
+              ),
+              shiny::div(
+                style = "background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;",
+                shiny::strong("Archive location:"),
+                shiny::br(),
+                shiny::code(archive_result$path, style = "word-break: break-all;")
+              )
+            ),
+            size = "m",
+            easyClose = TRUE,
+            footer = NULL
+          )
+        )
+        .le$info("Archive created successfully at: {archive_result$path}")
+      } else {
+        # Error modal
+        shiny::showModal(
+          shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Close"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "Archive Creation Failed",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px; color: #dc3545;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;")
+            ),
+            shiny::div(
+              style = "text-align: center; padding: 20px;",
+              shiny::div(
+                shiny::icon("exclamation-triangle", style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;")
+              ),
+              shiny::h4("Archive creation failed"),
+              shiny::p(
+                style = "margin: 15px 0;",
+                "An error occurred while creating the archive."
+              ),
+              shiny::div(
+                style = "background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 4px solid #dc3545;",
+                shiny::strong("Error details:"),
+                shiny::br(),
+                shiny::code(archive_result$error, style = "word-break: break-all; color: #721c24;")
+              )
+            ),
+            size = "m",
+            easyClose = TRUE,
+            footer = NULL
+          )
+        )
+      }
     })
 
     # Handle close and reset buttons

@@ -174,7 +174,18 @@ fn create_archive_impl(
 
     let archive_metadata = ArchiveMetadata::new(archive_files, &ENV_PROVIDER)
         .map_err(|e| Error::Other(format!("{e}")))?;
-    let path = PathBuf::from(working_dir).join(archive_path);
+
+    // Handle both relative and absolute archive paths correctly
+    let path = {
+        let archive_path_buf = PathBuf::from(archive_path);
+        if archive_path_buf.is_absolute() {
+            // If archive_path is absolute, use it as-is
+            archive_path_buf
+        } else {
+            // If archive_path is relative, make it relative to working_dir
+            PathBuf::from(working_dir).join(archive_path)
+        }
+    };
 
     log::debug!("Creating archive at {}", path.display());
     archive(archive_metadata, git_info, &path)
