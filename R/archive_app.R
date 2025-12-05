@@ -1300,8 +1300,6 @@ Deselecting the **Include Open Issues** checkbox
         )
       }
 
-      browser()
-
       .le$debug("Created archive tibble with {nrow(archive_tibble)} files")
       print(archive_tibble)
 
