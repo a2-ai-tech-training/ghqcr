@@ -9,7 +9,7 @@ use octocrab::models::issues::Issue;
 use serde::Deserialize;
 
 use crate::{
-    utils::{get_cached_git_info, get_disk_cache, get_rt},
+    utils::{get_cached_git_info, get_disk_cache, get_rt, ResultExt},
     ENV_PROVIDER,
 };
 
@@ -94,13 +94,12 @@ fn get_issue_latest_commit_impl(issue_robj: Robj, working_dir: &str) -> Result<I
     let cache = get_disk_cache(git_info);
     let rt = get_rt();
 
-    match rt.block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info)) {
-        Ok(t) => t.try_into(),
-        Err(e) => Err(Error::Other(format!(
-            "Failed to get issue thread for #{} - {}: {e}",
+    rt.block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info))
+        .map_to_extendr_err(&format!(
+            "Failed to get issue thread for #{} - {}",
             issue.number, issue.title
-        ))),
-    }
+        ))?
+        .try_into()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -113,12 +112,10 @@ struct ArchiveFileRow {
 
 impl ArchiveFileRow {
     fn into_archive_file(&self, flatten: bool) -> Result<ArchiveFile> {
-        let commit = ObjectId::from_str(&self.commit).map_err(|e| {
-            format!(
-                "Could not parse commit from {} for {}: {e}",
-                self.commit, self.file
-            )
-        })?;
+        let commit = ObjectId::from_str(&self.commit).map_to_extendr_err(&format!(
+            "Could not parse commit from {} for {}",
+            self.commit, self.file
+        ))?;
 
         let repository_file = PathBuf::from(&self.file);
         let archive_file = if flatten {
@@ -173,7 +170,7 @@ fn create_archive_impl(
     log::debug!("Including {} files in archive", archive_files.len());
 
     let archive_metadata = ArchiveMetadata::new(archive_files, &ENV_PROVIDER)
-        .map_err(|e| Error::Other(format!("{e}")))?;
+        .map_to_extendr_err("Failed to create archive metadata")?;
 
     // Handle both relative and absolute archive paths correctly
     let path = {
@@ -189,7 +186,7 @@ fn create_archive_impl(
 
     log::debug!("Creating archive at {}", path.display());
     archive(archive_metadata, git_info, &path)
-        .map_err(|e| format!("Failed to create archive: {e}"))?;
+        .map_to_extendr_err(&format!("Failed to create archive"))?;
 
     Ok(path.to_string_lossy().to_string())
 }

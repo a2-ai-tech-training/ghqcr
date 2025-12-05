@@ -14,7 +14,7 @@ use ghqctoolkit::{
 use octocrab::models::Milestone;
 
 use crate::{
-    utils::{get_cached_git_info, get_disk_cache, get_rt},
+    utils::{get_cached_git_info, get_disk_cache, get_rt, ResultExt},
     ENV_PROVIDER,
 };
 
@@ -34,11 +34,7 @@ fn get_milestone_issue_information_impl(milestones: Robj, working_dir: String) -
 
     let milestone_issues = rt
         .block_on(fetch_milestone_issues(&milestones, git_info))
-        .map_err(|e| {
-            Error::Other(format!(
-                "Failed to fetch issues for selected milestones: {e}"
-            ))
-        })?;
+        .map_to_extendr_err("Failed to fetch issues for selected milestones")?;
 
     let cache = get_disk_cache(git_info).as_ref();
 
@@ -51,11 +47,7 @@ fn get_milestone_issue_information_impl(milestones: Robj, working_dir: String) -
             git_info,
             &image_downloader,
         ))
-        .map_err(|e| {
-            Error::Other(format!(
-                "Failed to flatten issues to issue information: {e}"
-            ))
-        })?;
+        .map_to_extendr_err("Failed to get information needed for issue reporting")?;
 
     let mut names = Vec::new();
     let mut values: Vec<Robj> = Vec::new();
@@ -155,10 +147,8 @@ fn generate_record_impl(
     working_dir: String,
     just_tables: bool,
 ) -> Result<String> {
-    let milestones: Vec<Milestone> = from_robj(&milestones)
-        .map_err(|e| Error::Other(format!("Failed to deserialize milestones: {e}")))?;
-    let milestone_issues = deserialize_milestone_issues(milestone_issues)
-        .map_err(|e| Error::Other(format!("Failed to deserialize milestone issues: {e}")))?;
+    let milestones: Vec<Milestone> = from_robj(&milestones)?;
+    let milestone_issues = deserialize_milestone_issues(milestone_issues)?;
     let configuration = match from_robj(&configuration) {
         Ok(c) => c,
         Err(e) => {
@@ -172,8 +162,7 @@ fn generate_record_impl(
 
     let mut record_path = PathBuf::from(record_path);
     record_path.set_extension("pdf");
-    let record_path = absolute(record_path)
-        .map_err(|e| Error::Other(format!("Failed to make path absolute: {e}")))?;
+    let record_path = absolute(record_path).map_to_extendr_err("Failed to make path absolute")?;
 
     let record_str = record(
         &milestones,
@@ -183,15 +172,14 @@ fn generate_record_impl(
         &ENV_PROVIDER,
         just_tables,
     )
-    .map_err(|e| Error::Other(format!("Failed to generate record markdown string: {e}")))?;
+    .map_to_extendr_err("Failed to generate record markdown string")?;
 
     // Write the markdown to a debug file in the working directory
     if let Err(e) = write_debug_markdown(&record_str, &working_dir) {
         log::warn!("Failed to write debug markdown file: {}", e);
     }
 
-    render(&record_str, &record_path)
-        .map_err(|e| Error::Other(format!("Failed to render record due to: {e}")))?;
+    render(&record_str, &record_path).map_to_extendr_err("Failed to render record")?;
 
     Ok(format!(
         "Successfully rendered record to {}",
@@ -214,8 +202,7 @@ fn deserialize_milestone_issues(
     milestone_issues: Robj,
 ) -> Result<HashMap<String, Vec<IssueInformation>>> {
     // First, convert the Robj to a List to access its named elements
-    let list = List::try_from(milestone_issues)
-        .map_err(|e| Error::Other(format!("Failed to convert Robj to List: {}", e)))?;
+    let list = List::try_from(milestone_issues)?;
 
     let mut result = HashMap::new();
 
@@ -224,21 +211,11 @@ fn deserialize_milestone_issues(
         let milestone_title = name.to_string();
 
         // Convert the value (which should be a list of Issue Robjs) to Vec<Issue>
-        let issues_list = List::try_from(value.clone()).map_err(|e| {
-            Error::Other(format!(
-                "Failed to convert issues to List for milestone '{}': {}",
-                milestone_title, e
-            ))
-        })?;
+        let issues_list = List::try_from(value.clone())?;
 
         let mut issues = Vec::new();
         for issue_robj in issues_list.iter() {
-            let issue: IssueInformation = from_robj(&issue_robj.1).map_err(|e| {
-                Error::Other(format!(
-                    "Failed to deserialize issue in milestone '{}': {}",
-                    milestone_title, e
-                ))
-            })?;
+            let issue: IssueInformation = from_robj(&issue_robj.1)?;
             issues.push(issue);
         }
 

@@ -8,7 +8,7 @@ use ghqctoolkit::{
 use octocrab::models::issues::Issue;
 use serde::Deserialize;
 
-use crate::utils::{get_cached_git_info, get_disk_cache, get_rt};
+use crate::utils::{get_cached_git_info, get_disk_cache, get_rt, ResultExt};
 
 extendr_module! {
     mod git_utils;
@@ -30,7 +30,7 @@ fn get_milestones_impl(working_dir: &str) -> Result<Vec<Robj>> {
     let rt = get_rt();
     let milestones = rt
         .block_on(git_info.get_milestones())
-        .map_err(|e| Error::Other(format!("Failed to get milestones: {e}")))?;
+        .map_to_extendr_err("Failed to get milestones")?;
     milestones.iter().map(to_robj).collect::<Result<Vec<_>>>()
 }
 
@@ -42,12 +42,10 @@ fn get_milestone_issues_impl(working_dir: &str, milestone: Robj) -> Result<Vec<R
     let rt = get_rt();
     let issues = rt
         .block_on(git_info.get_milestone_issues(&milestone))
-        .map_err(|e| {
-            Error::Other(format!(
-                "Failed to retrieve issues from milestone {}: {e}",
-                milestone.number
-            ))
-        })?;
+        .map_to_extendr_err(&format!(
+            "Failed to retrieve issues from milestone #{} - {}",
+            milestone.number, milestone.title
+        ))?;
 
     issues.iter().map(to_robj).collect::<Result<Vec<_>>>()
 }
@@ -171,9 +169,7 @@ fn file_git_status_impl(
         results.push(result);
     }
 
-    results
-        .into_dataframe()
-        .map_err(|e| Error::Other(format!("Failed to create dataframe: {}", e)))
+    results.into_dataframe()
 }
 
 #[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
@@ -211,28 +207,26 @@ fn get_issue_commits_impl(working_dir: &str, issue_robj: Robj) -> Result<Datafra
     // Create IssueThread from the issue
     let issue_thread = rt
         .block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info))
-        .map_err(|e| Error::Other(format!("Failed to create issue thread: {e}")))?;
+        .map_to_extendr_err(&format!(
+            "Failed to create issue thread for #{} - {}",
+            issue.number, issue.title,
+        ))?;
     let r_commits = issue_thread
         .commits
         .into_iter()
         .map(RIssueCommit::from)
         .collect::<Vec<_>>();
 
-    r_commits
-        .into_dataframe()
-        .map_err(|e| Error::Other(format!("Failed to create dataframe: {}", e)))
+    r_commits.into_dataframe()
 }
 
 #[extendr]
 fn get_head_commit_impl(working_dir: &str) -> Result<String> {
     let cached_git_info = get_cached_git_info(working_dir)?;
     let git_info = cached_git_info.as_ref();
-
-    // Use the existing commit() trait function to get HEAD commit
-    match git_info.commit() {
-        Ok(commit) => Ok(commit.to_string()),
-        Err(e) => Err(Error::Other(format!("Failed to get HEAD commit: {}", e))),
-    }
+    git_info
+        .commit()
+        .map_to_extendr_err("Failed to get HEAD commit")
 }
 
 #[extendr]
@@ -242,7 +236,7 @@ fn get_branch_impl(working_dir: &str) -> Result<String> {
 
     git_info
         .branch()
-        .map_err(|e| Error::Other(format!("Failed to determine current branch: {e}")))
+        .map_to_extendr_err("Failed to determine current branch")
 }
 
 #[derive(Debug, Clone, PartialEq, IntoDataFrameRow)]
@@ -264,11 +258,9 @@ fn get_branch_commits(
 
     git_info
         .commits(&branch)
-        .map_err(|e| {
-            Error::Other(format!(
-                "Failed to determine commits for branch: {branch:?}: {e}"
-            ))
-        })?
+        .map_to_extendr_err(&format!(
+            "Failed to determine commits for branch '{branch:?}'"
+        ))?
         .iter()
         .flat_map(|c| {
             c.files.iter().map(|f| RCommitRow {

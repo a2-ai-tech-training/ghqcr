@@ -8,7 +8,7 @@ use gix::ObjectId;
 use octocrab::models::{issues::Issue, Milestone};
 use serde::{Deserialize, Serialize};
 
-use crate::utils::{get_cached_git_info, get_rt};
+use crate::utils::{get_cached_git_info, get_rt, ResultExt};
 
 extendr_module! {
     mod notify;
@@ -42,16 +42,17 @@ impl RQCComment {
     // Convert to actual QCComment for body generation
     fn to_qc_comment(&self) -> Result<QCComment> {
         let current_commit = ObjectId::from_str(&self.current_commit)
-            .map_err(|e| Error::Other(format!("Invalid current commit: {}", e)))?;
+            .map_to_extendr_err(&format!("Invalid current commit '{}'", self.current_commit))?;
 
-        let previous_commit = if let Some(ref prev) = self.previous_commit {
-            Some(
-                ObjectId::from_str(prev)
-                    .map_err(|e| Error::Other(format!("Invalid previous commit: {}", e)))?,
-            )
-        } else {
-            None
-        };
+        let previous_commit = self
+            .previous_commit
+            .as_ref()
+            .map(|c| ObjectId::from_str(c))
+            .transpose()
+            .map_to_extendr_err(&format!(
+                "Invalid previous commit '{}'",
+                self.previous_commit.as_ref().unwrap()
+            ))?;
 
         Ok(QCComment {
             file: PathBuf::from(&self.file),
@@ -145,26 +146,17 @@ fn create_qc_comment_impl(
     show_diff: bool,
 ) -> Result<Robj> {
     // Deserialize the issue from R
-    let issue: Issue = from_robj(&issue_robj)
-        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+    let issue: Issue = from_robj(&issue_robj)?;
 
     // Validate commit hashes can be parsed to ObjectId (but don't store ObjectId)
-    ObjectId::from_str(to_commit).map_err(|e| {
-        Error::Other(format!(
-            "Invalid current commit hash '{}': {}",
-            to_commit, e
-        ))
-    })?;
+    ObjectId::from_str(to_commit)
+        .map_to_extendr_err(&format!("Invalid current commit '{}'", to_commit))?;
 
     let previous_commit = if from_commit.is_empty() {
         None
     } else {
-        ObjectId::from_str(from_commit).map_err(|e| {
-            Error::Other(format!(
-                "Invalid previous commit hash '{}': {}",
-                from_commit, e
-            ))
-        })?;
+        ObjectId::from_str(from_commit)
+            .map_to_extendr_err(&format!("Invalid previous commit '{}'", from_commit))?;
         Some(from_commit.to_string())
     };
 
@@ -178,9 +170,7 @@ fn create_qc_comment_impl(
         no_diff: !show_diff, // no_diff is the inverse of show_diff
     };
 
-    // Convert to Robj
-    let robj = to_robj(&r_qc_comment)?;
-    Ok(robj)
+    to_robj(&r_qc_comment)
 }
 
 #[extendr]
@@ -213,11 +203,8 @@ fn post_qc_comment_impl(r_qc_comment_robj: Robj, working_dir: &str) -> Result<St
 
     // Post the comment using the GitHubWriter trait
     let rt = get_rt();
-    let result = rt
-        .block_on(git_info.post_comment(&qc_comment))
-        .map_err(|e| Error::Other(format!("Failed to post comment: {}", e)))?;
-
-    Ok(result)
+    rt.block_on(git_info.post_comment(&qc_comment))
+        .map_to_extendr_err("Failed to post comment")
 }
 
 // R-safe version of QCApproval with string hashes instead of ObjectId
@@ -233,7 +220,7 @@ impl TryInto<QCApprove> for RQCApprove {
     type Error = extendr_api::Error;
     fn try_into(self) -> std::result::Result<QCApprove, Self::Error> {
         let commit = ObjectId::from_str(&self.commit)
-            .map_err(|e| Error::Other(format!("Invalid approval commit: {e}")))?;
+            .map_to_extendr_err(&format!("Invalid approval commit '{}'", self.commit))?;
 
         Ok(QCApprove {
             file: PathBuf::from(self.file),
@@ -251,16 +238,11 @@ fn create_qc_approval_impl(
     approval_commit: &str,
     message: Nullable<String>,
 ) -> Result<Robj> {
-    let issue: Issue = from_robj(&issue_robj)
-        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+    let issue: Issue = from_robj(&issue_robj)?;
 
     // Validate commit hashes can be parsed to ObjectId (but don't store ObjectId)
-    ObjectId::from_str(approval_commit).map_err(|e| {
-        Error::Other(format!(
-            "Invalid approval commit hash '{}': {}",
-            approval_commit, e
-        ))
-    })?;
+    ObjectId::from_str(approval_commit)
+        .map_to_extendr_err(&format!("Invalid approval commit '{approval_commit}'"))?;
 
     let r_qc_approval = RQCApprove {
         file: filename.to_string(),
@@ -304,7 +286,7 @@ fn post_qc_approval_impl(r_qc_approval_robj: Robj, working_dir: &str) -> Result<
     let rt = get_rt();
     let result = rt
         .block_on(git_info.post_comment(&qc_approval))
-        .map_err(|e| Error::Other(format!("Failed to post approval: {}", e)))?;
+        .map_to_extendr_err("Failed to post approval")?;
     match rt.block_on(git_info.close_issue(qc_approval.issue.number)) {
         Ok(_) => log::info!("Successfully closed issue and posted approval comment!"),
         Err(e) => {
@@ -330,7 +312,7 @@ impl TryInto<QCReview> for RQCReview {
     type Error = extendr_api::Error;
     fn try_into(self) -> std::result::Result<QCReview, Self::Error> {
         let commit = ObjectId::from_str(&self.commit)
-            .map_err(|e| Error::Other(format!("Invalid review commit: {e}")))?;
+            .map_to_extendr_err(&format!("Invalid review commit '{}'", self.commit))?;
 
         Ok(QCReview {
             file: PathBuf::from(self.file),
@@ -352,16 +334,11 @@ fn create_qc_review_impl(
     no_diff: bool,
     working_dir: &str,
 ) -> Result<Robj> {
-    let issue: Issue = from_robj(&issue_robj)
-        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+    let issue: Issue = from_robj(&issue_robj)?;
 
     // Validate commit hashes can be parsed to ObjectId (but don't store ObjectId)
-    ObjectId::from_str(review_commit).map_err(|e| {
-        Error::Other(format!(
-            "Invalid review commit hash '{}': {}",
-            review_commit, e
-        ))
-    })?;
+    ObjectId::from_str(review_commit)
+        .map_to_extendr_err(&format!("Invalid review commit '{}'", review_commit))?;
 
     let r_qc_review = RQCReview {
         file: filename.to_string(),
@@ -405,17 +382,13 @@ fn post_qc_review_impl(r_qc_review_robj: Robj, working_dir: &str) -> Result<Stri
 
     // Post the comment using the GitHubWriter trait
     let rt = get_rt();
-    let result = rt
-        .block_on(git_info.post_comment(&qc_review))
-        .map_err(|e| Error::Other(format!("Failed to post review: {}", e)))?;
-
-    Ok(result)
+    rt.block_on(git_info.post_comment(&qc_review))
+        .map_to_extendr_err("Failed to post review")
 }
 
 #[extendr]
 fn create_qc_unapproval_impl(issue_robj: Robj, reason: String) -> Result<Robj> {
-    let issue: Issue = from_robj(&issue_robj)
-        .map_err(|e| Error::Other(format!("Failed to deserialize issue: {}", e)))?;
+    let issue: Issue = from_robj(&issue_robj)?;
 
     let qc_unapprove = QCUnapprove { issue, reason };
 
@@ -451,7 +424,7 @@ fn post_qc_unapproval_impl(r_qc_unapproval_robj: Robj, working_dir: &str) -> Res
     let rt = get_rt();
     let result = rt
         .block_on(git_info.post_comment(&qc_unapprove))
-        .map_err(|e| Error::Other(format!("Failed to post unapproval: {}", e)))?;
+        .map_to_extendr_err("Failed to post unapproval")?;
     match rt.block_on(git_info.open_issue(qc_unapprove.issue.number)) {
         Ok(_) => log::info!("Successfully opened issue and posted unapproval comment!"),
         Err(e) => {
