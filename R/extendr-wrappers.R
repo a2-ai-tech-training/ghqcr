@@ -92,5 +92,7 @@ get_issue_branch_impl <- function(issue_robj) .Call(wrap__get_issue_branch_impl,
 
 create_archive_impl <- function(archive_files_df, flatten, archive_path, working_dir) .Call(wrap__create_archive_impl, archive_files_df, flatten, archive_path, working_dir)
 
+get_file_content_impl <- function(archive_file_robj, working_dir) .Call(wrap__get_file_content_impl, archive_file_robj, working_dir)
+
 
 # nolint end

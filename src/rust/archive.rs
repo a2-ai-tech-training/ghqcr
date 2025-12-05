@@ -18,6 +18,7 @@ extendr_module! {
     fn get_issue_latest_commit_impl;
     fn get_issue_branch_impl;
     fn create_archive_impl;
+    fn get_file_content_impl;
 }
 
 #[extendr]
@@ -189,4 +190,17 @@ fn create_archive_impl(
         .map_to_extendr_err(&format!("Failed to create archive"))?;
 
     Ok(path.to_string_lossy().to_string())
+}
+
+#[extendr]
+fn get_file_content_impl(archive_file_robj: Robj, working_dir: &str) -> Result<String> {
+    let cached_git_info = get_cached_git_info(working_dir)?;
+    let git_info = cached_git_info.as_ref();
+    let archive_file = from_robj::<ArchiveFileRow>(&archive_file_robj)?.into_archive_file(false)?;
+    let content = archive_file
+        .file_content(git_info)
+        .map_to_extendr_err("Failed to get file content")?;
+
+    String::from_utf8(content)
+        .map_err(|_| Error::Other(format!("Failed to convert file's bytes to string")))
 }

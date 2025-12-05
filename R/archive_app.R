@@ -661,6 +661,143 @@ Deselecting the **Include Open Issues** checkbox
     # Leep track of commit observers to avoid duplicates
     commit_observers <- shiny::reactiveValues()
 
+    # Keep track of file preview observers to avoid duplicates
+    file_preview_observers <- shiny::reactiveValues()
+
+    # Reactive value for file preview requests
+    file_preview_request <- shiny::reactiveVal(NULL)
+
+    # Handle file preview requests (separate from button observers to avoid modal issues)
+    shiny::observeEvent(file_preview_request(), {
+      shiny::req(file_preview_request())
+
+      request <- file_preview_request()
+      file_name <- request$file
+      selected_commit <- request$commit
+
+      .le$debug("Processing file preview request for: {file_name}")
+
+      # Check if commit is selected
+      if (is.null(selected_commit) || selected_commit == "") {
+        .le$warn("No commit selected for file preview: {file_name}")
+        shiny::showModal(
+          shiny::modalDialog(
+            title = shiny::tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+              shiny::tags$div(
+                shiny::modalButton("Return"),
+                style = "flex: 0 0 auto;"
+              ),
+              shiny::tags$div(
+                "No commit selected",
+                style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
+              ),
+              shiny::tags$div(style = "flex: 0 0 auto;")
+            ),
+            shiny::h6("Select a commit to preview file content"),
+            footer = NULL,
+            easyClose = TRUE
+          )
+        )
+      } else {
+        .le$debug(
+          "Showing file preview for {file_name} at commit {selected_commit}"
+        )
+
+        # Attempt to get file content using Rust function
+        content_result <- tryCatch(
+          {
+            # Create the archive file data structure for the Rust function
+            archive_file_data <- list(
+              file = file_name,
+              commit = selected_commit
+            )
+
+            file_content <- .catch(get_file_content_impl(archive_file_data, working_dir))
+            list(success = TRUE, content = file_content)
+          },
+          error = function(e) {
+            .le$error("Failed to get file content for {file_name}: {e$message}")
+            list(success = FALSE, error = e$message)
+          }
+        )
+
+        if (content_result$success) {
+          # Success - show file content modal
+          shiny::showModal(
+            shiny::modalDialog(
+              title = shiny::tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                shiny::tags$div(
+                  shiny::modalButton("Close"),
+                  style = "flex: 0 0 auto;"
+                ),
+                shiny::tags$div(
+                  glue::glue("File Preview: {basename(file_name)}"),
+                  style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 18px;"
+                ),
+                shiny::tags$div(style = "flex: 0 0 auto;")
+              ),
+              shiny::div(
+                shiny::p(
+                  style = "margin: 10px 0; color: #666;",
+                  glue::glue("Commit: {substr(selected_commit, 1, 7)}")
+                ),
+                shiny::tags$pre(
+                  style = "border: 1px solid #ccc; padding: 10px; max-height: 500px; overflow-y: auto; background-color: white; margin: 0; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;",
+                  content_result$content
+                )
+              ),
+              size = "l",
+              easyClose = TRUE,
+              footer = NULL
+            )
+          )
+        } else {
+          # Error - show error modal
+          shiny::showModal(
+            shiny::modalDialog(
+              title = shiny::tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+                shiny::tags$div(
+                  shiny::modalButton("Close"),
+                  style = "flex: 0 0 auto;"
+                ),
+                shiny::tags$div(
+                  "Cannot Read File Content",
+                  style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 18px; color: #dc3545;"
+                ),
+                shiny::tags$div(style = "flex: 0 0 auto;")
+              ),
+              shiny::div(
+                style = "text-align: center; padding: 20px;",
+                shiny::div(
+                  shiny::icon("exclamation-triangle", style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;")
+                ),
+                shiny::h5(glue::glue("Unable to read content for: {file_name}")),
+                shiny::p(
+                  style = "margin: 10px 0; color: #666;",
+                  glue::glue("Commit: {substr(selected_commit, 1, 7)}")
+                ),
+                shiny::div(
+                  style = "background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 4px solid #dc3545;",
+                  shiny::strong("Error details:"),
+                  shiny::br(),
+                  shiny::code(content_result$error, style = "word-break: break-all; color: #721c24;")
+                )
+              ),
+              size = "m",
+              easyClose = TRUE,
+              footer = NULL
+            )
+          )
+        }
+      }
+
+      # Reset the reactive value
+      file_preview_request(NULL)
+    })
+
     shiny::observeEvent(
       archive_files(),
       {
@@ -730,6 +867,13 @@ Deselecting the **Include Open Issues** checkbox
             commit_observers[[file]]$destroy()
             commit_observers[[file]] <- NULL
             .le$debug("Removed commit observer for file: {file}")
+          }
+
+          # Remove file preview observer for this file
+          if (!is.null(file_preview_observers[[file]])) {
+            file_preview_observers[[file]]$destroy()
+            file_preview_observers[[file]] <- NULL
+            .le$debug("Removed file preview observer for file: {file}")
           }
 
           # Note: shinyvalidate doesn't support removing individual rules
@@ -900,8 +1044,49 @@ Deselecting the **Include Open Issues** checkbox
                 )
 
                 commit_observers[[current_file_name]] <- observer
+
+                # Create file preview observer for this file
+                file_preview_input_id <- generate_input_id(
+                  "file_preview",
+                  current_file_name
+                )
+
+                preview_observer <- shiny::observeEvent(
+                  input[[file_preview_input_id]],
+                  {
+                    .le$debug("File preview clicked for: {current_file_name}")
+
+                    # Get the current commit for this file
+                    commit_input_id <- generate_input_id(
+                      "commits",
+                      current_file_name
+                    )
+                    selected_commit <- input[[commit_input_id]]
+
+                    # Set the reactive value with file preview request
+                    file_preview_request(list(
+                      file = current_file_name,
+                      commit = selected_commit # Can be NULL, will be handled by modal observer
+                    ))
+
+                    commit_display <- if (
+                      is.null(selected_commit) || selected_commit == ""
+                    ) {
+                      "NULL"
+                    } else {
+                      selected_commit
+                    }
+                    .le$debug(
+                      "Set file preview request for: {current_file_name}, commit: {commit_display}"
+                    )
+                  },
+                  ignoreNULL = TRUE,
+                  ignoreInit = TRUE
+                )
+
+                file_preview_observers[[current_file_name]] <- preview_observer
                 .le$debug(
-                  "Created commit and milestones observers for file: {current_file_name}"
+                  "Created commit, milestones, and preview observers for file: {current_file_name}"
                 )
               },
               delay = 0.1
@@ -1724,10 +1909,18 @@ create_single_archive_file_ui <- function(
   for (prefix in c(
     "milestones",
     "commits",
-    "file_row"
+    "file_row",
+    "file_preview"
   )) {
     input_id[prefix] <- generate_input_id(prefix, file_name)
   }
+
+  file_preview_btn <- shiny::actionButton(
+    ns(input_id$file_preview),
+    label = file_name,
+    style = "padding: 4px 8px; margin: 2px 0; font-size: 12px; border-radius: 4px; border: 1px solid #ccc; background-color: #f8f9fa; color: #495057; white-space: normal; word-wrap: break-word; max-width: 200px; text-align: left; line-height: 1.2;",
+    class = "btn-sm"
+  )
 
   milestone_input <- if (
     is_empty(milestones) || all(milestones$milestone == "")
@@ -1783,7 +1976,12 @@ create_single_archive_file_ui <- function(
   shiny::div(
     id = ns(input_id$file_row),
     style = "display: contents;", # children participate in parent grid
-    shiny::h5(file_name),
+    shiny::actionButton(
+      ns(input_id$file_preview),
+      label = file_name,
+      style = "padding: 4px 8px; margin: 2px 0; font-size: 12px; border-radius: 4px; border: 1px solid #ccc; background-color: #f8f9fa; color: #495057; white-space: normal; word-wrap: break-word; max-width: 200px; text-align: left; line-height: 1.2;",
+      class = "btn-sm"
+    ),
     milestone_input,
     commit_input
   )
