@@ -1,3 +1,4 @@
+mod archive;
 mod configuration;
 mod create;
 mod git_utils;
@@ -14,12 +15,12 @@ static ENV_PROVIDER: StdEnvProvider = StdEnvProvider;
 static LOGGER_INIT: Mutex<bool> = Mutex::new(false);
 
 #[extendr]
-fn init_logger_impl() {
+fn init_logger_impl() -> Option<String> {
     let mut initialized = LOGGER_INIT.lock().unwrap();
 
     if *initialized {
         // Logger already initialized, skip
-        return;
+        return None;
     }
 
     let mut builder = env_logger::Builder::new();
@@ -63,17 +64,19 @@ fn init_logger_impl() {
     match builder.try_init() {
         Ok(_) => {
             *initialized = true;
-            eprintln!("Logger initialized with GHQC_LOG_LEVEL: {}", level_display);
-            log::info!("GHQC Logger initialized successfully");
+            Some(format!(
+                "Logger initialized with GHQC_LOG_LEVEL: {}",
+                level_display
+            ))
         }
         Err(_) => {
             // Logger was already initialized by another thread or call
             // This is fine, just mark as initialized
             *initialized = true;
-            eprintln!(
+            Some(format!(
                 "Logger already initialized, GHQC_LOG_LEVEL: {}",
                 level_display
-            );
+            ))
         }
     }
 }
@@ -123,6 +126,7 @@ extendr_module! {
     use create;
     use configuration;
     use record;
+    use archive;
     fn init_logger_impl;
     fn reset_logger_impl;
     fn log_message_impl;

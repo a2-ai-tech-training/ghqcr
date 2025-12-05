@@ -47,10 +47,20 @@ pub fn get_cached_git_info(working_dir: &str) -> Result<Arc<GitInfo>> {
 
     log::debug!("Creating new GitInfo for: {}", working_dir);
     let git_info = GitInfo::from_path(&PathBuf::from(working_dir), &ENV_PROVIDER)
-        .map_err(|e| Error::Other(format!("Failed to create GitInfo: {e}")))?;
+        .map_to_extendr_err("FAiled to create GitInfo")?;
 
     let arc_git_info = Arc::new(git_info);
     cache_guard.insert(key, Arc::clone(&arc_git_info));
 
     Ok(arc_git_info)
+}
+
+pub trait ResultExt<T> {
+    fn map_to_extendr_err(self, message: &str) -> Result<T>;
+}
+
+impl<T, E: std::fmt::Debug> ResultExt<T> for std::result::Result<T, E> {
+    fn map_to_extendr_err(self, message: &str) -> extendr_api::Result<T> {
+        self.map_err(|x| extendr_api::Error::Other(format!("{}: {x:?}", message)))
+    }
 }

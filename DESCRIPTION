@@ -35,7 +35,6 @@ Imports:
     shiny (>= 1.8.0),
     shinyjs,
     shinyvalidate,
-    shinyWidgets,
     stringr,
     tibble,
     waiter

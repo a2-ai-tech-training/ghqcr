@@ -1,7 +1,15 @@
+#' Launch GHQC Record App
+#'
+#' Launch the QC Record app in the foreground for generating QC records.
+#'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#' @param config_dir Character. Path to the configuration directory. If NULL,
+#'   uses default configuration location.
+#'
+#' @return Launches a Shiny app (no return value).
+#'
 #' @export
-#' @description
-#' Launch the QC Record app in the foreground
-
 ghqc_record_app <- function(
   working_dir = here::here(),
   config_dir = NULL
@@ -142,11 +150,11 @@ ghqc_record_server <- function(
 
       placeholder <- "Select Milestone(s)"
 
-      if (input$include_open || nrow(milestone_df) == 0) {
+      if (input$include_open || is_empty(milestone_df)) {
         milestone_options <- milestone_df |>
           dplyr::pull(name)
 
-        if (length(milestone_options) == 0) {
+        if (is_empty(milestone_options)) {
           placeholder <- "No Milestones Available"
         }
       } else {
@@ -154,7 +162,7 @@ ghqc_record_server <- function(
           dplyr::filter(!open) |>
           dplyr::pull(name)
 
-        if (length(milestone_options) == 0) {
+        if (is_empty(milestone_options)) {
           placeholder <- "No Closed Milestones"
         }
       }
@@ -268,6 +276,12 @@ ghqc_record_server <- function(
     })
 
     generate_record <- shiny::reactiveVal(FALSE)
+    reset_triggered <- shiny::reactiveVal(FALSE)
+    session$onSessionEnded(function() {
+      if (!isTRUE(shiny::isolate(reset_triggered()))) {
+        stopApp()
+      }
+    })
 
     shiny::observeEvent(milestone_issue_information(), {
       .le$debug("Checking issue states...")
@@ -291,7 +305,7 @@ ghqc_record_server <- function(
               style = "flex: 0 0 auto;"
             ),
             shiny::tags$div(
-              "⚠️ Warning",
+              shiny::HTML("<span style='font-size: 24px; vertical-align: middle;'>&#9888;</span> Warning"),
               style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
             ),
             shiny::tags$div(
@@ -383,11 +397,11 @@ show_result_modal <- function(session, result) {
 
   # Create appropriate title and styling
   if (is_success) {
-    title <- "✅ Record Generated Successfully"
+    title <- "<span style='font-size: 20px; vertical-align: middle;'>&#10004;</span> Record Generated Successfully"
     title_class <- "text-success"
     message <- result
   } else {
-    title <- "❌ Record Generation Failed"
+    title <- "<span style='font-size: 20px; vertical-align: middle;'>&#10060;</span> Record Generation Failed"
     title_class <- "text-danger"
     message <- result
   }
@@ -401,7 +415,7 @@ show_result_modal <- function(session, result) {
           style = "flex: 0 0 auto;"
         ),
         shiny::tags$div(
-          title,
+          shiny::HTML(title),
           class = title_class,
           style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
         ),
@@ -420,7 +434,7 @@ show_result_modal <- function(session, result) {
 }
 
 get_pdf_name <- function(repo, milestone_names, just_tables) {
-  if (length(milestone_names) == 0) {
+  if (is_empty(milestone_names)) {
     return(glue::glue("{repo}.pdf"))
   }
 

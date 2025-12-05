@@ -7,7 +7,10 @@ use ghqctoolkit::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{utils::get_rt, ENV_PROVIDER};
+use crate::{
+    utils::{get_rt, ResultExt},
+    ENV_PROVIDER,
+};
 
 extendr_module! {
     mod configuration;
@@ -79,7 +82,7 @@ impl From<Configuration> for RConfiguration {
 fn determine_config_dir_from_null(config_dir: Nullable<&str>) -> Result<PathBuf> {
     let c = config_dir.into_option().map(PathBuf::from);
     determine_config_dir(c, &ENV_PROVIDER)
-        .map_err(|e| Error::Other(format!("Error determining config directory: {e}")))
+        .map_to_extendr_err("Failed to determine config directory")
 }
 
 #[extendr]
@@ -89,14 +92,14 @@ fn setup_configuration_impl(config_dir: Nullable<&str>, git: &str) -> Result<Str
     let git_cmd = GitCommand;
 
     // Validate and parse the git URL
-    let git = gix::url::parse(git.into())
-        .map_err(|e| Error::Other(format!("Invalid git URL '{git}': {e}")))?;
+    let git =
+        gix::url::parse(git.into()).map_to_extendr_err(&format!("Invalid git URL '{git}'"))?;
 
     // Create a tokio runtime and run the async setup_configuration function
     let rt = get_rt();
 
     rt.block_on(setup_configuration(&config_dir, git.clone(), git_cmd))
-        .map_err(|e| Error::Other(format!("Config directory could not be cloned: {e}")))?;
+        .map_to_extendr_err("Config directory could not be cloned")?;
 
     Ok(format!(
         "Configuration successfully setup at {}",
@@ -129,18 +132,11 @@ fn get_configuration_impl(config_dir: Nullable<&str>) -> Result<Robj> {
 fn get_checklists_impl(configuration: Robj) -> Result<Robj> {
     let configuration: RConfiguration = from_robj(&configuration)?;
 
-    let r_obj = configuration
+    configuration
         .checklists
         .into_dataframe()
-        .map_err(|e| {
-            Error::Other(format!(
-                "Checklists could not be converted to R dataframe object: {e}"
-            ))
-        })?
-        .as_robj()
-        .clone();
-
-    Ok(r_obj)
+        .map(|df| df.as_robj().clone())
+        .map_to_extendr_err("Checklists could not be converted to R dataframe object")
 }
 
 #[extendr]

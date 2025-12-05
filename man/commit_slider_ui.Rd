@@ -8,12 +8,6 @@ commit_slider_ui(id)
 }
 \arguments{
 \item{id}{Module ID}
-
-\item{commits}{Data frame with columns: hash, message, qc_class, edits_file}
-
-\item{default_from}{Default "from" commit (short SHA)}
-
-\item{default_to}{Default "to" commit (short SHA)}
 }
 \description{
 A custom dual-handle slider for selecting commit ranges

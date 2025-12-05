@@ -1,4 +1,4 @@
-^\.Rproj$
+^.*\.Rproj$
 ^\.Rproj\.user$
 ^\.vscode$
 ^src/\.cargo$
@@ -7,3 +7,13 @@
 ^src/Makevars$
 ^src/Makevars\.win$
 ^LICENSE\.md$
+^rv$
+^rproject.toml$
+^rv\.toml$
+^\.Rprofile$
+^\.github$
+^\.claude$
+^src/rust/\.cargo$
+^src/rust/target$
+^cache$
+^data$

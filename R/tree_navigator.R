@@ -108,7 +108,7 @@ list_files_and_dirs <- function(path, pattern, all.files) {
   # if included_files returns an empty list because all files were filtered out, dir_ls is rerun
   # w/ recurse to expose those files to show user as to why dir is not able to be indexed into
   # didn't reuse lfs because wanted only files rather than both files and dirs + recurse
-  if (length(included_files) == 0) {
+  if (is_empty(included_files)) {
     list_all <- fs::dir_ls(
       path = path,
       all = TRUE,

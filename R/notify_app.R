@@ -1,8 +1,15 @@
-#' @export
-#' @description
+#' Launch GHQC Notify App
+#'
 #' Launches the notify app into the foreground for authors to comment on updates made to the script,
 #' reviewers to comment saved, uncommitted, in-line diffs, and approve and unapprove the issue.
 #'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#'
+#' @return Launches a Shiny app (no return value).
+#'
+#' @importFrom stats setNames
+#' @export
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
     ui = ghqc_notify_ui(id = "ghqc_notify_app"),
@@ -281,7 +288,7 @@ ghqc_notify_server <- function(id, working_dir) {
       if (input$type_tab %in% c("Notify Changes", "Approve")) {
         # Check if we have commit data available
         commits <- current_issue_commits()
-        if (is.null(commits) || nrow(commits) == 0) {
+        if (is_empty(commits)) {
           return(FALSE)
         }
       }
@@ -349,7 +356,7 @@ ghqc_notify_server <- function(id, working_dir) {
     filtered_milestone_names <- shiny::reactive({
       shiny::req(milestone_df)
 
-      if (nrow(milestone_df) == 0) {
+      if (is_empty(milestone_df)) {
         return(c())
       }
 
@@ -621,7 +628,7 @@ ghqc_notify_server <- function(id, working_dir) {
       new_issue_choices <- filtered_issues |> format_issues()
 
       # Check if there are any issues available
-      if (length(new_issue_choices) == 0) {
+      if (is_empty(new_issue_choices)) {
         # No issues available - show helpful message
         placeholder_msg <- if (input$type_tab == "Unapprove") {
           "No closed issues available"
@@ -679,7 +686,7 @@ ghqc_notify_server <- function(id, working_dir) {
         ) |>
         dplyr::slice(1)
 
-      if (nrow(selected_issue_info) == 0) {
+      if (is_empty(selected_issue_info)) {
         return()
       }
 
@@ -777,7 +784,7 @@ ghqc_notify_server <- function(id, working_dir) {
       )
 
       # Update the commit range slider based on results
-      if (is.null(issue_commits) || nrow(issue_commits) == 0) {
+      if (is_empty(issue_commits)) {
         .le$warn("There are no commits available for {input$select_issue}")
         # No commits available - disable timeline
         current_issue_commits(NULL)
@@ -818,6 +825,9 @@ ghqc_notify_server <- function(id, working_dir) {
                 glue::glue(
                   "Could not determine current HEAD commit: {e$message}"
                 ),
+                glue::glue(
+                  "Could not determine current HEAD commit: {e$message}"
+                ),
                 footer = NULL,
                 easyClose = TRUE
               ))
@@ -840,7 +850,7 @@ ghqc_notify_server <- function(id, working_dir) {
           ]
           .le$debug("HEAD match found: {nrow(head_match)} rows")
 
-          if (nrow(head_match) == 0) {
+          if (is_empty(head_match)) {
             shiny::showModal(shiny::modalDialog(
               title = shiny::tags$div(
                 style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -901,8 +911,7 @@ ghqc_notify_server <- function(id, working_dir) {
               # Defensive check: ensure required columns exist
               required_columns <- c("edits_file", "qc_class", "reviewed")
               if (
-                is.null(commits_data) ||
-                  nrow(commits_data) == 0 ||
+                is_empty(commits_data) ||
                   !all(required_columns %in% names(commits_data))
               ) {
                 .le$warn(
@@ -941,7 +950,7 @@ ghqc_notify_server <- function(id, working_dir) {
                     head_in_rel <- rel_commits[
                       substr(rel_commits$hash, 1, 7) == head_short,
                     ]
-                    if (nrow(head_in_rel) == 0) {
+                    if (is_empty(head_in_rel)) {
                       .le$debug(
                         "Adding HEAD commit {head_short} to relevant commits for Review tab"
                       )
@@ -962,13 +971,13 @@ ghqc_notify_server <- function(id, working_dir) {
               rel_commits
             }
           }),
-          reactive({
+          shiny::reactive({
             input$type_tab == "Approve" || input$type_tab == "Review"
           }),
-          reactive({
+          shiny::reactive({
             input$type_tab
           }),
-          reactive({
+          shiny::reactive({
             # For Review tab, pass HEAD commit as default
             if (input$type_tab == "Review") {
               head_commit_result <- tryCatch(
@@ -1061,7 +1070,7 @@ ghqc_notify_server <- function(id, working_dir) {
         ) |>
         dplyr::slice(1)
 
-      if (nrow(selected_issue_info) == 0) {
+      if (is_empty(selected_issue_info)) {
         shiny::showModal(shiny::modalDialog(
           title = shiny::tags$div(
             style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1219,7 +1228,7 @@ ghqc_notify_server <- function(id, working_dir) {
         ) |>
         dplyr::slice(1)
 
-      if (nrow(selected_issue_info) == 0) {
+      if (is_empty(selected_issue_info)) {
         return()
       }
 
@@ -1326,7 +1335,7 @@ ghqc_notify_server <- function(id, working_dir) {
             substr(commits_df$hash, 1, 7) == to_commit_short,
           ]
 
-          if (nrow(to_commit_match) == 0) {
+          if (is_empty(to_commit_match)) {
             shiny::showModal(shiny::modalDialog(
               title = shiny::tags$div(
                 style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1356,7 +1365,7 @@ ghqc_notify_server <- function(id, working_dir) {
             substr(commits_df$hash, 1, 7) == from_commit_short,
           ]
 
-          if (nrow(from_commit_match) == 0) {
+          if (is_empty(from_commit_match)) {
             shiny::showModal(shiny::modalDialog(
               title = shiny::tags$div(
                 style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1389,7 +1398,7 @@ ghqc_notify_server <- function(id, working_dir) {
             substr(commits_df$hash, 1, 7) == to_commit_short,
           ]
 
-          if (nrow(from_commit_match) == 0 || nrow(to_commit_match) == 0) {
+          if (is_empty(from_commit_match) || is_empty(to_commit_match)) {
             shiny::showModal(shiny::modalDialog(
               title = shiny::tags$div(
                 style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
@@ -1736,62 +1745,6 @@ ghqc_notify_server <- function(id, working_dir) {
       session$reload()
     })
   })
-}
-
-# takes in a list of milestones, with sublist issues and
-# returns a df with columns Milestone, Number, Name, Open, MilestoneNumber
-flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
-  # Handle empty input or empty milestone lists
-  if (
-    length(multiple_milestone_issues) == 0 ||
-      all(lengths(multiple_milestone_issues) == 0)
-  ) {
-    return(tibble::tibble(
-      milestone = character(0),
-      milestone_number = numeric(0),
-      number = integer(0),
-      name = character(0),
-      open = logical(0)
-    ))
-  }
-
-  purrr::imap_dfr(
-    multiple_milestone_issues,
-    function(milestone_issues, milestone_name) {
-      purrr::map_dfr(milestone_issues, function(issue) {
-        # Extract milestone number from the issue's milestone object
-        milestone_number <- if (
-          !is.null(issue$milestone) && !is.null(issue$milestone$number)
-        ) {
-          issue$milestone$number
-        } else {
-          # Fallback: extract number from milestone name if it follows a pattern
-          # This handles cases where milestone name is like "v1.0", "Release 2.1", etc.
-          milestone_name_pattern <- stringr::str_extract(
-            milestone_name,
-            "\\d+(\\.\\d+)*"
-          )
-          if (!is.na(milestone_name_pattern)) {
-            as.numeric(stringr::str_replace_all(
-              milestone_name_pattern,
-              "\\.",
-              ""
-            ))
-          } else {
-            0 # Default fallback
-          }
-        }
-
-        tibble::tibble(
-          milestone = milestone_name,
-          milestone_number = milestone_number,
-          number = issue$number,
-          name = issue$title,
-          open = identical(issue$state, "open")
-        )
-      })
-    }
-  )
 }
 
 format_issues <- function(milestone_issue_df) {

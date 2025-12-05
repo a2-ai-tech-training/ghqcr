@@ -1,3 +1,9 @@
+# Suppress global variable notes for variables used in data manipulation contexts
+utils::globalVariables(c(
+  "name", "milestone", "number", "open", "from_milestone",
+  "login", "milestone_number", "disp", "bullet_point"
+))
+
 .catch <- function(cnd) {
   rlang::catch_cnd(
     {
@@ -10,6 +16,10 @@
     "extendr_err"
   )
   cnd
+}
+
+is_empty <- function(d) {
+  isTRUE(length(d) == 0) || is.null(d) || isTRUE(nrow(d) == 0)
 }
 
 capitalize <- function(word) {
@@ -77,7 +87,7 @@ fix_issue_ids <- function(issue) {
   }
 
   # Fix assignees (array of users)
-  if (!is.null(issue$assignees) && length(issue$assignees) > 0) {
+  if (!is_empty(issue$assignees)) {
     issue$assignees <- lapply(issue$assignees, function(assignee) {
       if (!is.null(assignee$id)) {
         assignee$id <- safe_id_to_char(assignee$id)
@@ -98,7 +108,7 @@ fix_issue_ids <- function(issue) {
   }
 
   # Fix label IDs
-  if (!is.null(issue$labels) && length(issue$labels) > 0) {
+  if (!is_empty(issue$labels)) {
     issue$labels <- lapply(issue$labels, function(label) {
       if (!is.null(label$id)) {
         label$id <- safe_id_to_char(label$id)
@@ -128,6 +138,64 @@ get_multiple_milestone_issues <- function(milestones, working_dir) {
   lapply(multiple_milestone_issues, function(milestone_issues) {
     lapply(milestone_issues, fix_issue_ids)
   })
+}
+
+# takes in a list of milestones, with sublist issues and
+# returns a df with columns Milestone, Number, Name, Open, MilestoneNumber
+flatten_multiple_milestone_issues <- function(multiple_milestone_issues) {
+  # Handle empty input or empty milestone lists
+  if (
+    is_empty(multiple_milestone_issues) ||
+      all(lengths(multiple_milestone_issues) == 0)
+  ) {
+    return(tibble::tibble(
+      milestone = character(0),
+      milestone_number = numeric(0),
+      number = integer(0),
+      name = character(0),
+      open = logical(0),
+      branch = character(0)
+    ))
+  }
+
+  purrr::imap_dfr(
+    multiple_milestone_issues,
+    function(milestone_issues, milestone_name) {
+      purrr::map_dfr(milestone_issues, function(issue) {
+        # Extract milestone number from the issue's milestone object
+        milestone_number <- if (
+          !is.null(issue$milestone) && !is.null(issue$milestone$number)
+        ) {
+          issue$milestone$number
+        } else {
+          # Fallback: extract number from milestone name if it follows a pattern
+          # This handles cases where milestone name is like "v1.0", "Release 2.1", etc.
+          milestone_name_pattern <- stringr::str_extract(
+            milestone_name,
+            "\\d+(\\.\\d+)*"
+          )
+          if (!is.na(milestone_name_pattern)) {
+            as.numeric(stringr::str_replace_all(
+              milestone_name_pattern,
+              "\\.",
+              ""
+            ))
+          } else {
+            0 # Default fallback
+          }
+        }
+
+        tibble::tibble(
+          milestone = milestone_name,
+          milestone_number = milestone_number,
+          number = issue$number,
+          name = issue$title,
+          open = identical(issue$state, "open"),
+          branch = get_issue_branch_impl(issue),
+        )
+      })
+    }
+  )
 }
 
 git_issue_modal_check <- function(
@@ -165,7 +233,7 @@ git_issue_modal_check <- function(
   if (has_duplicates) {
     messages <- c(
       messages,
-      "## ❌ Duplicate Issues",
+      "## &#10060 Duplicate Issues",
       paste(
         "- **",
         duplicate_files,
@@ -179,7 +247,7 @@ git_issue_modal_check <- function(
     error_files <- git_statuses[!is.na(git_statuses$error_message), ]
     messages <- c(
       messages,
-      "## ❌ Git Errors",
+      "## &#10060; Git Errors",
       paste(
         "- **",
         error_files$file_path,
@@ -197,7 +265,7 @@ git_issue_modal_check <- function(
     ]
     messages <- c(
       messages,
-      "## 🚫 Sync Issues",
+      "## &#128683; Sync Issues",
       paste(
         "- **",
         blocking_files$file_path,
@@ -212,7 +280,7 @@ git_issue_modal_check <- function(
     dirty_files <- git_statuses[git_statuses$git_status %in% "Local changes", ]
     messages <- c(
       messages,
-      "## ⚠️ Local Changes",
+      "## &#9888; Local Changes",
       paste("- **", dirty_files$file_path, "**: Uncommitted changes", sep = "")
     )
   }
@@ -221,7 +289,7 @@ git_issue_modal_check <- function(
     untracked_files <- git_statuses[!git_statuses$is_git_tracked, ]
     messages <- c(
       messages,
-      "## 📝 Untracked Files",
+      "## &#128221; Untracked Files",
       paste(
         "- **",
         untracked_files$file_path,

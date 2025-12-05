@@ -1,4 +1,4 @@
-create_single_file_ui <- function(
+create_single_assign_file_ui <- function(
   file_name,
   ns,
   checklist_names,
@@ -240,9 +240,7 @@ extract_file_data <- function(input, selected_files, checklists, repo_users) {
     assignee_logins <- input[[generate_input_id("assignee", file_name)]]
 
     # Handle case where no assignees are selected (assignees are optional)
-    assignees_df <- if (
-      is.null(assignee_logins) || length(assignee_logins) == 0
-    ) {
+    assignees_df <- if (is_empty(assignee_logins)) {
       data.frame(login = character(0), name = character(0))
     } else {
       repo_users |>
@@ -389,7 +387,7 @@ create_qc_issues <- function(
 #' )
 #' }
 safe_tibble_creation <- function(data, schema, map_fn) {
-  if (length(data) == 0) {
+  if (is_empty(data)) {
     do.call(tibble::tibble, schema)
   } else {
     purrr::map_dfr(data, map_fn)
