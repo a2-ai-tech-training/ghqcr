@@ -1301,7 +1301,6 @@ Deselecting the **Include Open Issues** checkbox
       }
 
       .le$debug("Created archive tibble with {nrow(archive_tibble)} files")
-      print(archive_tibble)
 
       # Attempt to create the archive and show result modal
       archive_result <- tryCatch(
