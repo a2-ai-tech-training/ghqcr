@@ -1,12 +1,20 @@
+.le <- new.env()
+
 .onLoad <- function(...) {
   # Setup unified logging system
   tryCatch(
     {
       init_logging()
-      init_logger_impl()
+      init_logger_impl() |>
+        packageStartupMessage()
     },
     error = function(e) {
-      cat("Failed to initialize logging:", conditionMessage(e), "\n")
+      # Silently handle logging initialization errors during package loading
+      packageStartupMessage(paste(
+        "Failed to initialize logging:",
+        conditionMessage(e),
+        "\n"
+      ))
     }
   )
 
@@ -14,11 +22,6 @@
 }
 
 init_logging <- function() {
-  # Create .le environment if it doesn't exist
-  if (!exists(".le", envir = .GlobalEnv)) {
-    assign(".le", new.env(), envir = .GlobalEnv)
-  }
-
   # Create simple logging functions that use Rust backend with glue interpolation
   .le$trace <- function(msg) {
     log_message_impl(

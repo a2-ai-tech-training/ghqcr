@@ -1,3 +1,9 @@
+# Suppress global variable notes for variables used in data manipulation contexts
+utils::globalVariables(c(
+  "name", "milestone", "number", "open", "from_milestone",
+  "login", "milestone_number", "disp", "bullet_point"
+))
+
 .catch <- function(cnd) {
   rlang::catch_cnd(
     {
@@ -227,7 +233,7 @@ git_issue_modal_check <- function(
   if (has_duplicates) {
     messages <- c(
       messages,
-      "## ❌ Duplicate Issues",
+      "## &#10060 Duplicate Issues",
       paste(
         "- **",
         duplicate_files,
@@ -241,7 +247,7 @@ git_issue_modal_check <- function(
     error_files <- git_statuses[!is.na(git_statuses$error_message), ]
     messages <- c(
       messages,
-      "## ❌ Git Errors",
+      "## &#10060; Git Errors",
       paste(
         "- **",
         error_files$file_path,
@@ -259,7 +265,7 @@ git_issue_modal_check <- function(
     ]
     messages <- c(
       messages,
-      "## 🚫 Sync Issues",
+      "## &#128683; Sync Issues",
       paste(
         "- **",
         blocking_files$file_path,
@@ -274,7 +280,7 @@ git_issue_modal_check <- function(
     dirty_files <- git_statuses[git_statuses$git_status %in% "Local changes", ]
     messages <- c(
       messages,
-      "## ⚠️ Local Changes",
+      "## &#9888; Local Changes",
       paste("- **", dirty_files$file_path, "**: Uncommitted changes", sep = "")
     )
   }
@@ -283,7 +289,7 @@ git_issue_modal_check <- function(
     untracked_files <- git_statuses[!git_statuses$is_git_tracked, ]
     messages <- c(
       messages,
-      "## 📝 Untracked Files",
+      "## &#128221; Untracked Files",
       paste(
         "- **",
         untracked_files$file_path,

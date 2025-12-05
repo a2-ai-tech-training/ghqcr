@@ -276,6 +276,12 @@ ghqc_record_server <- function(
     })
 
     generate_record <- shiny::reactiveVal(FALSE)
+    reset_triggered <- shiny::reactiveVal(FALSE)
+    session$onSessionEnded(function() {
+      if (!isTRUE(shiny::isolate(reset_triggered()))) {
+        stopApp()
+      }
+    })
 
     shiny::observeEvent(milestone_issue_information(), {
       .le$debug("Checking issue states...")
@@ -299,7 +305,7 @@ ghqc_record_server <- function(
               style = "flex: 0 0 auto;"
             ),
             shiny::tags$div(
-              "⚠️ Warning",
+              shiny::HTML("<span style='font-size: 24px; vertical-align: middle;'>&#9888;</span> Warning"),
               style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
             ),
             shiny::tags$div(
@@ -391,11 +397,11 @@ show_result_modal <- function(session, result) {
 
   # Create appropriate title and styling
   if (is_success) {
-    title <- "✅ Record Generated Successfully"
+    title <- "<span style='font-size: 20px; vertical-align: middle;'>&#10004;</span> Record Generated Successfully"
     title_class <- "text-success"
     message <- result
   } else {
-    title <- "❌ Record Generation Failed"
+    title <- "<span style='font-size: 20px; vertical-align: middle;'>&#10060;</span> Record Generation Failed"
     title_class <- "text-danger"
     message <- result
   }
@@ -409,7 +415,7 @@ show_result_modal <- function(session, result) {
           style = "flex: 0 0 auto;"
         ),
         shiny::tags$div(
-          title,
+          shiny::HTML(title),
           class = title_class,
           style = "flex: 1 1 auto; text-align: center; font-weight: bold; font-size: 20px;"
         ),

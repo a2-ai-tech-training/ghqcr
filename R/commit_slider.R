@@ -3,9 +3,7 @@
 #' A custom dual-handle slider for selecting commit ranges
 #'
 #' @param id Module ID
-#' @param commits Data frame with columns: hash, message, qc_class, edits_file
-#' @param default_from Default "from" commit (short SHA)
-#' @param default_to Default "to" commit (short SHA)
+#' @importFrom jsonlite toJSON
 commit_slider_ui <- function(id) {
   ns <- shiny::NS(id)
 

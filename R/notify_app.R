@@ -8,6 +8,7 @@
 #'
 #' @return Launches a Shiny app (no return value).
 #'
+#' @importFrom stats setNames
 #' @export
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
