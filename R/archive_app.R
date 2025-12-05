@@ -1240,7 +1240,7 @@ Deselecting the **Include Open Issues** checkbox
         state = character(0)
       )
 
-      for (file_name in rendered_files()) {
+      for (file_name in (rendered_files() |> unique())) {
         # Get milestone and commit for this file
         milestone_input_id <- generate_input_id("milestones", file_name)
         commit_input_id <- generate_input_id("commits", file_name)
@@ -1300,6 +1300,8 @@ Deselecting the **Include Open Issues** checkbox
         )
       }
 
+      browser()
+
       .le$debug("Created archive tibble with {nrow(archive_tibble)} files")
       print(archive_tibble)
 
@@ -1340,18 +1342,26 @@ Deselecting the **Include Open Issues** checkbox
             shiny::div(
               style = "text-align: center; padding: 20px;",
               shiny::div(
-                shiny::icon("check-circle", style = "font-size: 48px; color: #28a745; margin-bottom: 15px;")
+                shiny::icon(
+                  "check-circle",
+                  style = "font-size: 48px; color: #28a745; margin-bottom: 15px;"
+                )
               ),
               shiny::h4("Your archive has been created successfully!"),
               shiny::p(
                 style = "margin: 15px 0;",
-                "Archive contains ", shiny::strong(nrow(archive_tibble)), " files"
+                "Archive contains ",
+                shiny::strong(nrow(archive_tibble)),
+                " files"
               ),
               shiny::div(
                 style = "background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;",
                 shiny::strong("Archive location:"),
                 shiny::br(),
-                shiny::code(archive_result$path, style = "word-break: break-all;")
+                shiny::code(
+                  archive_result$path,
+                  style = "word-break: break-all;"
+                )
               )
             ),
             size = "m",
@@ -1379,7 +1389,10 @@ Deselecting the **Include Open Issues** checkbox
             shiny::div(
               style = "text-align: center; padding: 20px;",
               shiny::div(
-                shiny::icon("exclamation-triangle", style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;")
+                shiny::icon(
+                  "exclamation-triangle",
+                  style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;"
+                )
               ),
               shiny::h4("Archive creation failed"),
               shiny::p(
@@ -1390,7 +1403,10 @@ Deselecting the **Include Open Issues** checkbox
                 style = "background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 4px solid #dc3545;",
                 shiny::strong("Error details:"),
                 shiny::br(),
-                shiny::code(archive_result$error, style = "word-break: break-all; color: #721c24;")
+                shiny::code(
+                  archive_result$error,
+                  style = "word-break: break-all; color: #721c24;"
+                )
               )
             ),
             size = "m",
