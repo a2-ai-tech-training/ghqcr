@@ -1,7 +1,15 @@
-#' @export
-#' @description
-#' Launches the Assign App into the foreground
+#' Launch GHQC Assign App
 #'
+#' Launches the Assign App into the foreground for assigning QC files to milestones.
+#'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#' @param config_dir Character. Path to the configuration directory. If NULL,
+#'   uses default configuration location.
+#'
+#' @return Launches a Shiny app (no return value).
+#'
+#' @export
 ghqc_assign_app <- function(
   working_dir = here::here(),
   config_dir = NULL

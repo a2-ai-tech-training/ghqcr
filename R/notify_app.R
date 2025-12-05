@@ -1,8 +1,14 @@
-#' @export
-#' @description
+#' Launch GHQC Notify App
+#'
 #' Launches the notify app into the foreground for authors to comment on updates made to the script,
 #' reviewers to comment saved, uncommitted, in-line diffs, and approve and unapprove the issue.
 #'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#'
+#' @return Launches a Shiny app (no return value).
+#'
+#' @export
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
     ui = ghqc_notify_ui(id = "ghqc_notify_app"),

@@ -1,7 +1,15 @@
+#' Launch GHQC Record App
+#'
+#' Launch the QC Record app in the foreground for generating QC records.
+#'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#' @param config_dir Character. Path to the configuration directory. If NULL,
+#'   uses default configuration location.
+#'
+#' @return Launches a Shiny app (no return value).
+#'
 #' @export
-#' @description
-#' Launch the QC Record app in the foreground
-
 ghqc_record_app <- function(
   working_dir = here::here(),
   config_dir = NULL

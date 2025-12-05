@@ -1,3 +1,22 @@
+#' Launch GHQC Archive App
+#'
+#' Opens a Shiny application for creating archives of QC files with their
+#' associated milestones and commit information.
+#'
+#' @param working_dir Character. Path to the working directory containing the
+#'   git repository. Defaults to the current working directory via here::here().
+#'
+#' @return Launches a Shiny app (no return value).
+#'
+#' @export
+#' @examples
+#' \dontrun{
+#' # Launch archive app in current directory
+#' ghqc_archive_app()
+#'
+#' # Launch archive app in specific directory
+#' ghqc_archive_app("/path/to/repo")
+#' }
 ghqc_archive_app <- function(
   working_dir = here::here()
 ) {
@@ -713,7 +732,10 @@ Deselecting the **Include Open Issues** checkbox
               commit = selected_commit
             )
 
-            file_content <- .catch(get_file_content_impl(archive_file_data, working_dir))
+            file_content <- .catch(get_file_content_impl(
+              archive_file_data,
+              working_dir
+            ))
             list(success = TRUE, content = file_content)
           },
           error = function(e) {
@@ -772,9 +794,14 @@ Deselecting the **Include Open Issues** checkbox
               shiny::div(
                 style = "text-align: center; padding: 20px;",
                 shiny::div(
-                  shiny::icon("exclamation-triangle", style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;")
+                  shiny::icon(
+                    "exclamation-triangle",
+                    style = "font-size: 48px; color: #dc3545; margin-bottom: 15px;"
+                  )
                 ),
-                shiny::h5(glue::glue("Unable to read content for: {file_name}")),
+                shiny::h5(glue::glue(
+                  "Unable to read content for: {file_name}"
+                )),
                 shiny::p(
                   style = "margin: 10px 0; color: #666;",
                   glue::glue("Commit: {substr(selected_commit, 1, 7)}")
@@ -783,7 +810,10 @@ Deselecting the **Include Open Issues** checkbox
                   style = "background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left; border-left: 4px solid #dc3545;",
                   shiny::strong("Error details:"),
                   shiny::br(),
-                  shiny::code(content_result$error, style = "word-break: break-all; color: #721c24;")
+                  shiny::code(
+                    content_result$error,
+                    style = "word-break: break-all; color: #721c24;"
+                  )
                 )
               ),
               size = "m",
