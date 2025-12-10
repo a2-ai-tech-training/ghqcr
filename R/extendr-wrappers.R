@@ -10,7 +10,7 @@
 #' @useDynLib ghqc, .registration = TRUE
 NULL
 
-init_logger_impl <- function() invisible(.Call(wrap__init_logger_impl))
+init_logger_impl <- function() .Call(wrap__init_logger_impl)
 
 reset_logger_impl <- function() invisible(.Call(wrap__reset_logger_impl))
 

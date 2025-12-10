@@ -1,7 +1,14 @@
 # Suppress global variable notes for variables used in data manipulation contexts
 utils::globalVariables(c(
-  "name", "milestone", "number", "open", "from_milestone",
-  "login", "milestone_number", "disp", "bullet_point"
+  "name",
+  "milestone",
+  "number",
+  "open",
+  "from_milestone",
+  "login",
+  "milestone_number",
+  "disp",
+  "bullet_point"
 ))
 
 .catch <- function(cnd) {
@@ -39,6 +46,7 @@ generate_input_id <- function(prefix = NULL, name) {
 
 # Helper function to safely convert numeric IDs to character strings
 safe_id_to_char <- function(id) {
+  # id
   if (is.null(id) || is.na(id)) {
     return(id)
   }

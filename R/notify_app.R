@@ -10,6 +10,7 @@
 #'
 #' @importFrom stats setNames
 #' @export
+
 ghqc_notify_app <- function(working_dir = here::here()) {
   app <- shiny::shinyApp(
     ui = ghqc_notify_ui(id = "ghqc_notify_app"),
@@ -909,7 +910,7 @@ ghqc_notify_server <- function(id, working_dir) {
               commits_data <- current_issue_commits()
 
               # Defensive check: ensure required columns exist
-              required_columns <- c("edits_file", "qc_class", "reviewed")
+              required_columns <- c("edits_file", "statuses")
               if (
                 is_empty(commits_data) ||
                   !all(required_columns %in% names(commits_data))
@@ -921,8 +922,10 @@ ghqc_notify_server <- function(id, working_dir) {
               } else {
                 rel_commits <- commits_data[
                   commits_data$edits_file == TRUE |
-                    commits_data$qc_class != "no_comment" |
-                    commits_data$reviewed == TRUE,
+                    sapply(commits_data$statuses, function(s) {
+                      length(parse_commit_statuses(s)) > 0
+                    }) |
+                    sapply(commits_data$statuses, is_reviewed),
                 ]
               }
 
@@ -1757,4 +1760,20 @@ format_issues <- function(milestone_issue_df) {
       )
     ) |>
     dplyr::pull(disp)
+}
+
+# Helper functions for multi-status commit system
+parse_commit_statuses <- function(statuses_str) {
+  if (is.na(statuses_str) || statuses_str == "") {
+    return(character(0))
+  }
+  trimws(strsplit(statuses_str, ",")[[1]])
+}
+
+has_status <- function(statuses_str, status) {
+  status %in% parse_commit_statuses(statuses_str)
+}
+
+is_reviewed <- function(statuses_str) {
+  has_status(statuses_str, "reviewed")
 }
