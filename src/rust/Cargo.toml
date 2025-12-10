@@ -11,9 +11,10 @@ name = 'ghqc'
 path = "lib.rs"
 
 [dependencies]
-extendr-api = { version = "0.8.1", features = ["result_condition", "serde"] }
-ghqctoolkit = { git = "https://github.com/a2-ai/ghqctoolkit", branch = "archive" }
-#ghqctoolkit = { path = "../../../ghqctoolkit" }
+#extendr-api = { version = "0.8.1", features = ["result_condition", "serde"] }
+extendr-api = { git = "https://github.com/extendr/extendr", branch = "main", features = ["result_condition", "serde"] }
+#ghqctoolkit = { git = "https://github.com/a2-ai/ghqctoolkit", branch = "archive" }
+ghqctoolkit = { path = "../../../ghqctoolkit" }
 gix = { version = "0.73", default-features = false }
 tokio = { version = "1.0", features = ["rt-multi-thread"] }
 anyhow = "1.0"

@@ -1,3 +1,24 @@
+# Helper functions for multi-status commit system
+parse_commit_statuses <- function(statuses_str) {
+  if (is.na(statuses_str) || statuses_str == "") {
+    return(character(0))
+  }
+  trimws(strsplit(statuses_str, ",")[[1]])
+}
+
+has_status <- function(statuses_str, status) {
+  status %in% parse_commit_statuses(statuses_str)
+}
+
+is_reviewed <- function(statuses_str) {
+  has_status(statuses_str, "reviewed")
+}
+
+get_status_tooltip <- function(statuses) {
+  if (length(statuses) == 0) return("No status")
+  paste("Statuses:", paste(statuses, collapse = ", "))
+}
+
 #' Commit Range Slider Module
 #'
 #' A custom dual-handle slider for selecting commit ranges
@@ -17,7 +38,7 @@ commit_slider_ui <- function(id) {
 #' Commit Range Slider Server
 #'
 #' @param id Module ID
-#' @param commits Reactive data frame with columns: hash, message, qc_class, edits_file
+#' @param commits Reactive data frame with columns: hash, message, statuses, edits_file
 #' @param single_select Reactive logical, if TRUE shows single handle for single commit selection
 #' @param tab_type Reactive character, the current tab type for styling
 #' @param default_commit Reactive character, optional specific commit to use as default (short hash)
@@ -75,10 +96,10 @@ commit_slider_server <- function(
         NULL
       }
 
-      # Find latest non-no_comment commit
-      non_no_comment_commits <- which(commits_df$qc_class != "no_comment")
-      latest_non_no_comment <- if (length(non_no_comment_commits) > 0) {
-        max(non_no_comment_commits)
+      # Find latest commit with any status
+      commits_with_status <- which(sapply(commits_df$statuses, function(s) length(parse_commit_statuses(s)) > 0))
+      latest_with_status <- if (length(commits_with_status) > 0) {
+        max(commits_with_status)
       } else {
         NULL
       }
@@ -91,8 +112,8 @@ commit_slider_server <- function(
           default_from <- default_commit()
         } else {
           # Single select: just pick the latest relevant commit
-          if (!is.null(latest_non_no_comment)) {
-            default_to <- commit_labels[latest_non_no_comment]
+          if (!is.null(latest_with_status)) {
+            default_to <- commit_labels[latest_with_status]
           } else if (!is.null(latest_file_changing)) {
             default_to <- commit_labels[latest_file_changing]
           } else {
@@ -102,35 +123,35 @@ commit_slider_server <- function(
         }
       } else {
         # Range selection logic (existing)
-        if (!is.null(latest_file_changing) && !is.null(latest_non_no_comment)) {
-          if (latest_file_changing > latest_non_no_comment) {
-            # Case 1: File-changing commit occurs after latest non-no_comment
-            default_from <- commit_labels[latest_non_no_comment]
+        if (!is.null(latest_file_changing) && !is.null(latest_with_status)) {
+          if (latest_file_changing > latest_with_status) {
+            # Case 1: File-changing commit occurs after latest commit with status
+            default_from <- commit_labels[latest_with_status]
             default_to <- commit_labels[latest_file_changing]
           } else {
-            # One selector on non-no_comment, other tries to be different file-changing
-            default_to <- commit_labels[latest_non_no_comment]
+            # One selector on commit with status, other tries to be different file-changing
+            default_to <- commit_labels[latest_with_status]
 
             # Try to find a different file-changing commit
             other_file_changing <- file_changing_commits[
-              file_changing_commits != latest_non_no_comment
+              file_changing_commits != latest_with_status
             ]
             if (length(other_file_changing) > 0) {
               default_from <- commit_labels[max(other_file_changing)]
             } else {
               # Fall back to previous commit if available
-              default_from <- if (latest_non_no_comment > 1) {
-                commit_labels[latest_non_no_comment - 1]
+              default_from <- if (latest_with_status > 1) {
+                commit_labels[latest_with_status - 1]
               } else {
                 commit_labels[min(2, length(commit_labels))]
               }
             }
           }
-        } else if (!is.null(latest_non_no_comment)) {
-          # Only non-no_comment commits available
-          default_to <- commit_labels[latest_non_no_comment]
-          default_from <- if (latest_non_no_comment > 1) {
-            commit_labels[latest_non_no_comment - 1]
+        } else if (!is.null(latest_with_status)) {
+          # Only commits with status available
+          default_to <- commit_labels[latest_with_status]
+          default_from <- if (latest_with_status > 1) {
+            commit_labels[latest_with_status - 1]
           } else {
             commit_labels[min(2, length(commit_labels))]
           }
@@ -184,25 +205,27 @@ commit_slider_server <- function(
                 left_pos <- (i - 1) / (nrow(commits_df) - 1) * 100
               }
 
-              # Style based on both edits_file, qc_class, and reviewed status
+              # Style based on edits_file and multi-status system
               edits_file <- commits_df$edits_file[i]
-              qc_class <- commits_df$qc_class[i]
-              reviewed <- commits_df$reviewed[i]
+              statuses <- parse_commit_statuses(commits_df$statuses[i])
+              reviewed <- is_reviewed(commits_df$statuses[i])
 
               # Always render exactly two dots in the same structure
               # This ensures consistent spacing regardless of visibility
 
-              # Primary QC class dot color
-              primary_color <- if (qc_class == "no_comment") {
+              # Primary status dot color based on priority
+              primary_color <- if (length(statuses) == 0) {
                 "transparent"
+              } else if ("approved" %in% statuses) {
+                "#28a745" # Green for approved
+              } else if ("notification" %in% statuses) {
+                "#ffc107" # Yellow for notification
+              } else if ("initial" %in% statuses) {
+                "#007bff" # Blue for initial
+              } else if ("reviewed" %in% statuses) {
+                "#6c757d" # Gray for reviewed only
               } else {
-                switch(
-                  qc_class,
-                  "initial" = "#007bff", # Blue for initial
-                  "notification" = "#ffc107", # Yellow for notification
-                  "approval" = "#28a745", # Green for approval
-                  "#007bff" # Default fallback
-                )
+                "#007bff" # Default fallback
               }
 
               # Review dot color
@@ -210,7 +233,7 @@ commit_slider_server <- function(
 
               # Always create exactly the same structure: container with two dots
               # Handle "falling" logic: if only review (no primary QC), review falls to bottom
-              has_primary <- qc_class != "no_comment"
+              has_primary <- length(statuses) > 0 && any(statuses %in% c("approved", "notification", "initial"))
               has_review <- reviewed
 
               if (has_primary && has_review) {
@@ -229,7 +252,7 @@ commit_slider_server <- function(
                     style = glue::glue(
                       "width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"
                     ),
-                    title = glue::glue("QC Class: {qc_class}")
+                    title = get_status_tooltip(statuses)
                   )
                 )
               } else if (has_review) {
@@ -263,11 +286,7 @@ commit_slider_server <- function(
                     style = glue::glue(
                       "width: 8px; height: 8px; background: {primary_color}; border-radius: 50%; margin: 0 auto 0px auto;"
                     ),
-                    title = if (qc_class != "no_comment") {
-                      glue::glue("QC Class: {qc_class}")
-                    } else {
-                      ""
-                    }
+                    title = get_status_tooltip(statuses)
                   )
                 )
               }

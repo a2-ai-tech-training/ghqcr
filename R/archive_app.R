@@ -1452,7 +1452,7 @@ Deselecting the **Include Open Issues** checkbox
         file = character(0),
         commit = character(0),
         milestone = character(0),
-        state = character(0)
+        approved = logical(0)
       )
 
       for (file_name in (rendered_files() |> unique())) {
@@ -1463,10 +1463,11 @@ Deselecting the **Include Open Issues** checkbox
         milestone_value <- input[[milestone_input_id]]
         commit_value <- input[[commit_input_id]]
 
-        # Determine state for this file
-        state_value <- NA_character_
-
+        # Determine approved status for this file
         if (!is.null(milestone_value) && milestone_value != "") {
+          # Milestone has a value - approved must be a boolean
+          approved_value <- FALSE # Default to FALSE if we can't determine
+
           # File has a milestone - get its state from issue data
           issue_info <- flattened_loaded_issues() |>
             dplyr::filter(name == file_name, milestone == milestone_value)
@@ -1487,16 +1488,18 @@ Deselecting the **Include Open Issues** checkbox
               error = function(e) NULL
             )
 
-            # Extract state if available
+            # Extract approved status if available
             if (
-              !is.null(latest_commit_info) && !is.null(latest_commit_info$state)
+              !is.null(latest_commit_info) &&
+                !is.null(latest_commit_info$approved)
             ) {
-              state_value <- latest_commit_info$state
+              approved_value <- latest_commit_info$approved
             }
           }
         } else {
-          # File has no milestone - set milestone and state to NA
+          # File has no milestone - set milestone and approved to NA
           milestone_value <- NA_character_
+          approved_value <- NA
         }
 
         # Add row to tibble
@@ -1510,7 +1513,7 @@ Deselecting the **Include Open Issues** checkbox
               commit_value
             },
             milestone = milestone_value,
-            state = state_value
+            approved = approved_value
           )
         )
       }
@@ -1920,11 +1923,11 @@ get_latest_commit_from_issue <- function(
     return(NULL)
   }
 
-  # Return both commit hash and message
+  # Return commit hash, message, and approved status
   list(
     commit = issue_data$commit[1],
     message = issue_data$message[1],
-    state = issue_data$state[1]
+    approved = issue_data$approved[1]
   )
 }
 
@@ -2066,10 +2069,10 @@ check_milestone_issue_status <- function(
         !is.null(latest_commit_info$commit) &&
         !is.null(latest_commit_info$message)
     ) {
-      # Check if the issue state is approved
+      # Check if the issue is approved
       if (
-        !is.null(latest_commit_info$state) &&
-          latest_commit_info$state != "approved"
+        !is.null(latest_commit_info$approved) &&
+          !latest_commit_info$approved
       ) {
         return("Issue is not approved")
       }

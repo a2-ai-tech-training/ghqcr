@@ -176,19 +176,25 @@ fn file_git_status_impl(
 struct RIssueCommit {
     hash: String,
     message: String,
-    qc_class: String, // Will convert QCClass to String for R compatibility
+    statuses: String, // Comma-separated list of statuses for R compatibility
     edits_file: bool,
-    reviewed: bool,
 }
 
 impl From<IssueCommit> for RIssueCommit {
     fn from(commit: IssueCommit) -> Self {
+        // Convert HashSet<CommitStatus> to comma-separated string for R compatibility
+        let mut statuses_vec: Vec<String> = commit.statuses
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        statuses_vec.sort(); // Consistent ordering
+        let statuses_str = statuses_vec.join(",");
+
         Self {
             hash: commit.hash.to_string(),
             message: commit.message,
-            qc_class: commit.state.to_string(),
+            statuses: statuses_str,
             edits_file: commit.file_changed,
-            reviewed: commit.reviewed,
         }
     }
 }

@@ -15,7 +15,7 @@ commit_slider_server(
 \arguments{
 \item{id}{Module ID}
 
-\item{commits}{Reactive data frame with columns: hash, message, qc_class, edits_file}
+\item{commits}{Reactive data frame with columns: hash, message, statuses, edits_file}
 
 \item{single_select}{Reactive logical, if TRUE shows single handle for single commit selection}
 

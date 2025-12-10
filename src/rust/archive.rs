@@ -2,7 +2,8 @@ use std::{path::PathBuf, str::FromStr};
 
 use extendr_api::{deserializer::from_robj, prelude::*, IntoRobj};
 use ghqctoolkit::{
-    archive, parse_branch_from_body, ArchiveFile, ArchiveMetadata, ArchiveQC, IssueThread,
+    archive, parse_branch_from_body, ArchiveFile, ArchiveMetadata, ArchiveQC, CommitStatus,
+    IssueThread,
 };
 use gix::ObjectId;
 use octocrab::models::issues::Issue;
@@ -58,31 +59,17 @@ struct IssueLatestCommit {
     file: String,
     commit: String,
     message: String,
-    state: String,
+    approved: bool,
 }
 
-impl TryFrom<IssueThread> for IssueLatestCommit {
-    type Error = extendr_api::Error;
-    fn try_from(issue_thread: IssueThread) -> std::result::Result<Self, Self::Error> {
-        let commit = match issue_thread.latest_commit() {
-            Some(latest_commit) => issue_thread
-                .commits
-                .iter()
-                .find(|c| &c.hash == latest_commit),
-            None => issue_thread.commits.first(),
-        };
-
-        match commit {
-            Some(c) => Ok(Self {
-                file: issue_thread.file.to_string_lossy().to_string(),
-                commit: c.hash.to_string(),
-                message: c.message.to_string(),
-                state: c.state.to_string(),
-            }),
-            None => Err(Error::Other(format!(
-                "Failed to find a commit for {}",
-                issue_thread.file.display()
-            ))),
+impl From<IssueThread> for IssueLatestCommit {
+    fn from(issue_thread: IssueThread) -> Self {
+        let latest_commit = issue_thread.latest_commit();
+        Self {
+            file: issue_thread.file.to_string_lossy().to_string(),
+            commit: latest_commit.hash.to_string(),
+            message: latest_commit.message.to_string(),
+            approved: latest_commit.statuses.contains(&CommitStatus::Approved),
         }
     }
 }
@@ -96,11 +83,11 @@ fn get_issue_latest_commit_impl(issue_robj: Robj, working_dir: &str) -> Result<I
     let rt = get_rt();
 
     rt.block_on(IssueThread::from_issue(&issue, cache.as_ref(), git_info))
+        .map(IssueLatestCommit::from)
         .map_to_extendr_err(&format!(
             "Failed to get issue thread for #{} - {}",
             issue.number, issue.title
-        ))?
-        .try_into()
+        ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -108,7 +95,7 @@ struct ArchiveFileRow {
     file: String,
     commit: String,
     milestone: Option<String>,
-    state: Option<String>,
+    approved: Option<bool>,
 }
 
 impl ArchiveFileRow {
@@ -131,10 +118,10 @@ impl ArchiveFileRow {
                 .to_path_buf()
         };
 
-        let qc = match (&self.milestone, &self.state) {
-            (Some(milestone), Some(state)) => Some(ArchiveQC {
+        let qc = match (&self.milestone, self.approved) {
+            (Some(milestone), Some(approved)) => Some(ArchiveQC {
                 milestone: milestone.to_string(),
-                approved: state == "approved",
+                approved,
             }),
             (None, None) => None,
             _ => {
